@@ -9,9 +9,15 @@ import SwiftUI
 
 @main
 struct ChronaApp: App {
+    @StateObject private var appModel = AppViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootTabView()
+                .environmentObject(appModel)
+                .preferredColorScheme(appModel.applyTheme())
         }
     }
 }
+
+
