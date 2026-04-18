@@ -35,8 +35,7 @@ struct ActiveSessionView: View {
                         Text(session.mode == .pomodoro ? String(localized: "mode.pomodoro") : session.mode == .stopwatch ? String(localized: "mode.stopwatch") : String(localized: "mode.countdown"))
                             .foregroundStyle(.secondary)
                     }
-                    .opacity(isImmersive ? 0 : 1)
-                    .frame(height: isImmersive ? 0 : nil)
+                    .opacity(1) // Always show task name and type, even in immersive mode
 
                     Text(timerText)
                         .font(.system(size: timerFontSize(for: timerText), weight: .bold, design: .rounded))
