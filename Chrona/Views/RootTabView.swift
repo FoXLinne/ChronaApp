@@ -9,12 +9,12 @@ struct RootTabView: View {
                 .tag(AppTab.tasks)
                 .tabItem {
                     Label(String(localized: "tab.tasks"), systemImage: "checklist")
-                }
-
-            StatisticsView()
-                .tag(AppTab.statistics)
+                }            
+            
+            CountdownView()
+                .tag(AppTab.countdown)
                 .tabItem {
-                    Label(String(localized: "tab.statistics"), systemImage: "chart.xyaxis.line")
+                    Label(String(localized: "tab.countdown"), systemImage: "calendar")
                 }
 
             ActiveSessionView()
@@ -23,10 +23,10 @@ struct RootTabView: View {
                     Label(String(localized: "tab.active"), systemImage: "timer")
                 }
 
-            CountdownView()
-                .tag(AppTab.countdown)
+            StatisticsView()
+                .tag(AppTab.statistics)
                 .tabItem {
-                    Label(String(localized: "tab.countdown"), systemImage: "calendar")
+                    Label(String(localized: "tab.statistics"), systemImage: "chart.xyaxis.line")
                 }
 
             ProfileView()
