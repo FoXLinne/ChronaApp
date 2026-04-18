@@ -31,3 +31,4 @@ Pods/
 *.swp
 *.tmp
 *.log
+.github/
