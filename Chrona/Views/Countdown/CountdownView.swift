@@ -1,40 +1,262 @@
 import SwiftUI
 
 struct CountdownView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
-    @State private var title = ""
-    @State private var date = Date.now
+    @State private var editorRoute: CountdownEditorRoute?
+    @State private var pendingDeletion: CountdownEvent?
+    @State private var searchText = ""
+    @State private var selectedScopes = Set(CountdownScope.allCases)
 
     var body: some View {
         NavigationStack {
             List {
-                Section(String(localized: "countdown.add")) {
-                    TextField(String(localized: "countdown.name"), text: $title)
-                    DatePicker(String(localized: "countdown.date"), selection: $date, displayedComponents: [.date])
-                    Button(String(localized: "common.add")) {
-                        appModel.addCountdownEvent(title: title, date: date)
-                        title = ""
-                        date = .now
+                if selectedScopes.contains(.future), !filteredFutureEvents.isEmpty {
+                    Section(String(localized: "countdown.future")) {
+                        ForEach(filteredFutureEvents) { event in
+                            eventRow(event, future: true)
+                        }
+                        .onDelete(perform: handleDeleteFuture)
                     }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
-                Section(String(localized: "countdown.future")) {
-                    ForEach(appModel.futureEvents) { event in
-                        CountdownRow(event: event, future: true)
+                if selectedScopes.contains(.past), !filteredPastEvents.isEmpty {
+                    Section(String(localized: "countdown.past")) {
+                        ForEach(filteredPastEvents) { event in
+                            eventRow(event, future: false)
+                        }
+                        .onDelete(perform: handleDeletePast)
                     }
-                    .onDelete { appModel.deleteCountdownEvents(at: $0, from: true) }
                 }
 
-                Section(String(localized: "countdown.past")) {
-                    ForEach(appModel.pastEvents) { event in
-                        CountdownRow(event: event, future: false)
+                if filteredFutureEvents.isEmpty && filteredPastEvents.isEmpty {
+                    Section {
+                        Text(String(localized: "countdown.empty"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                    .onDelete { appModel.deleteCountdownEvents(at: $0, from: false) }
                 }
             }
             .navigationTitle(String(localized: "tab.countdown"))
+            .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+            .background {
+                if colorScheme == .light {
+                    PageBackground(seed: "lavender")
+                }
+            }
+            .searchable(
+                text: $searchText,
+                placement: .toolbar,
+                prompt: String(localized: "countdown.search")
+            )
+            .searchToolbarBehavior(.minimize)
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(CountdownScope.allCases) { scope in
+                            Toggle(isOn: binding(for: scope)) {
+                                Text(scopeTitle(scope))
+                            }
+                        }
+                    } label: {
+                        Label(String(localized: "countdown.filter"), systemImage: "line.3.horizontal.decrease.circle")
+                    }
+
+                    Button {
+                        editorRoute = .add()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(String(localized: "countdown.add"))
+                }
+            }
+            .sheet(item: $editorRoute) { route in
+                CountdownEditorView(event: route.event) { updated in
+                    if route.event == nil {
+                        appModel.addCountdownEvent(title: updated.title, date: updated.date)
+                    } else {
+                        appModel.updateCountdownEvent(updated)
+                    }
+                }
+            }
+            .alert(item: $pendingDeletion) { event in
+                Alert(
+                    title: Text(String(localized: "countdown.delete.confirm.title")),
+                    message: Text(String(format: String(localized: "countdown.delete.confirm.message"), event.title)),
+                    primaryButton: .destructive(Text(String(localized: "common.delete"))) {
+                        appModel.deleteCountdownEvent(id: event.id)
+                    },
+                    secondaryButton: .cancel(Text(String(localized: "common.cancel")))
+                )
+            }
         }
+    }
+
+    private func eventRow(_ event: CountdownEvent, future: Bool) -> some View {
+        CountdownRow(event: event, future: future)
+            .contextMenu {
+                Button(String(localized: "common.edit")) {
+                    editorRoute = .edit(event)
+                }
+                Button(String(localized: "common.delete"), role: .destructive) {
+                    pendingDeletion = event
+                }
+            }
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    pendingDeletion = event
+                } label: {
+                    Label(String(localized: "common.delete"), systemImage: "trash")
+                }
+
+                Button {
+                    editorRoute = .edit(event)
+                } label: {
+                    Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
+                }
+                .tint(.accentColor)
+            }
+    }
+
+    private var filteredFutureEvents: [CountdownEvent] {
+        filteredEvents(for: .future)
+    }
+
+    private var filteredPastEvents: [CountdownEvent] {
+        filteredEvents(for: .past)
+    }
+
+    private func filteredEvents(for scope: CountdownScope) -> [CountdownEvent] {
+        let base = scope == .future ? appModel.futureEvents : appModel.pastEvents
+        let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !keyword.isEmpty else { return base }
+        return base.filter { $0.title.lowercased().contains(keyword) }
+    }
+
+    private func handleDeleteFuture(_ offsets: IndexSet) {
+        let ids = offsets.compactMap { index in
+            filteredFutureEvents.indices.contains(index) ? filteredFutureEvents[index].id : nil
+        }
+        ids.forEach(appModel.deleteCountdownEvent(id:))
+    }
+
+    private func handleDeletePast(_ offsets: IndexSet) {
+        let ids = offsets.compactMap { index in
+            filteredPastEvents.indices.contains(index) ? filteredPastEvents[index].id : nil
+        }
+        ids.forEach(appModel.deleteCountdownEvent(id:))
+    }
+
+    private func binding(for scope: CountdownScope) -> Binding<Bool> {
+        Binding {
+            selectedScopes.contains(scope)
+        } set: { enabled in
+            if enabled {
+                selectedScopes.insert(scope)
+            } else if selectedScopes.count > 1 {
+                selectedScopes.remove(scope)
+            }
+        }
+    }
+
+    private func scopeTitle(_ scope: CountdownScope) -> String {
+        switch scope {
+        case .future:
+            return String(localized: "countdown.future")
+        case .past:
+            return String(localized: "countdown.past")
+        }
+    }
+}
+
+private enum CountdownScope: String, CaseIterable, Identifiable {
+    case future
+    case past
+
+    var id: String { rawValue }
+}
+
+private struct CountdownEditorRoute: Identifiable {
+    enum Mode {
+        case add
+        case edit(CountdownEvent)
+    }
+
+    let id = UUID()
+    let mode: Mode
+
+    static func add() -> CountdownEditorRoute {
+        CountdownEditorRoute(mode: .add)
+    }
+
+    static func edit(_ event: CountdownEvent) -> CountdownEditorRoute {
+        CountdownEditorRoute(mode: .edit(event))
+    }
+
+    var event: CountdownEvent? {
+        switch mode {
+        case .add:
+            return nil
+        case .edit(let event):
+            return event
+        }
+    }
+}
+
+private struct CountdownEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title: String
+    @State private var date: Date
+
+    let event: CountdownEvent?
+    let onSave: (CountdownEvent) -> Void
+
+    init(event: CountdownEvent?, onSave: @escaping (CountdownEvent) -> Void) {
+        self.event = event
+        self.onSave = onSave
+        _title = State(initialValue: event?.title ?? "")
+        _date = State(initialValue: event?.date ?? .now)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField(String(localized: "countdown.name"), text: $title)
+                DatePicker(String(localized: "countdown.date"), selection: $date, displayedComponents: [.date])
+            }
+            .navigationTitle(event == nil ? String(localized: "countdown.add") : String(localized: "countdown.edit"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        save()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .tint(.accentColor)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func save() {
+        var output = event ?? CountdownEvent(title: title, date: date)
+        output.title = title
+        output.date = date
+        onSave(output)
+        dismiss()
     }
 }
 
@@ -52,19 +274,44 @@ private struct CountdownRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(label)
-                .font(.subheadline.bold())
-                .foregroundStyle(future ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            dayLabel
         }
         .padding(.vertical, 4)
     }
 
-    private var label: String {
+    private var dayDelta: Int {
         let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: .now), to: Calendar.current.startOfDay(for: event.date)).day ?? 0
         if future {
-            return String(format: String(localized: "countdown.inDays"), max(days, 0))
+            return max(days, 0)
         }
-        return String(format: String(localized: "countdown.pastDays"), abs(days))
+        return abs(days)
+    }
+
+    private var prefixText: String {
+        future
+            ? String(localized: "countdown.inDays.prefix")
+            : String(localized: "countdown.pastDays.prefix")
+    }
+
+    private var suffixText: String {
+        String(localized: "countdown.days.suffix")
+    }
+
+    private var dayLabel: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(prefixText)
+                .font(.footnote.weight(.semibold))
+
+            Text("\(dayDelta)")
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Text(suffixText)
+                .font(.footnote.weight(.semibold))
+        }
+        .foregroundStyle(future ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
     }
 }
 

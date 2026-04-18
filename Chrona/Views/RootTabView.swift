@@ -36,16 +36,6 @@ struct RootTabView: View {
                 }
         }
         .toolbar(appModel.selectedTab == .active && appModel.isActiveImmersiveChromeHidden ? .hidden : .visible, for: .tabBar)
-        .onChange(of: appModel.selectedTab) { _, tab in
-            if tab != .active && appModel.isActiveImmersiveChromeHidden {
-                appModel.selectedTab = .active
-                appModel.showGlobalNotice(String(localized: "session.immersive.locked"))
-                return
-            }
-            if tab != .active {
-                appModel.setActiveImmersiveChromeHidden(false)
-            }
-        }
         .overlay(alignment: .top) {
             if let message = appModel.globalNotice {
                 Text(message)

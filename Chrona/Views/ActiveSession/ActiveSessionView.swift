@@ -6,6 +6,7 @@ struct ActiveSessionView: View {
     @State private var showStopConfirm = false
     @State private var showDiscardConfirm = false
     @State private var autoHideTask: Task<Void, Never>?
+    @State private var hasPlayedInitialImmersiveTransition = false
 
     private var isImmersive: Bool {
         appModel.shouldShowMinimalMode && !revealControls
@@ -20,6 +21,13 @@ struct ActiveSessionView: View {
                 .animation(.smooth, value: isImmersive)
 
             if let session = appModel.activeSession, let status = appModel.timerStatus {
+                Color.black
+                    .ignoresSafeArea()
+                    .opacity(session.phase == .focus && session.isPaused ? (isImmersive ? 0.22 : 0.3) : 0)
+                    .animation(.smooth, value: session.isPaused)
+
+                let timerText = appModel.formattedDuration(status.remaining ?? status.elapsed)
+
                 VStack(spacing: 24) {
                     VStack(spacing: 10) {
                         Text(session.phase == .rest ? String(localized: "session.resting") : session.taskTitle)
@@ -30,8 +38,10 @@ struct ActiveSessionView: View {
                     .opacity(isImmersive ? 0 : 1)
                     .frame(height: isImmersive ? 0 : nil)
 
-                    Text(appModel.formattedDuration(status.remaining ?? status.elapsed))
-                        .font(.system(size: isImmersive ? 108 : 72, weight: .bold, design: .rounded))
+                    Text(timerText)
+                        .font(.system(size: timerFontSize(for: timerText), weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                         .contentTransition(isImmersive ? .identity : .numericText())
                         .monospacedDigit()
                         .animation(isImmersive ? nil : .smooth, value: status.remaining ?? status.elapsed)
@@ -45,6 +55,12 @@ struct ActiveSessionView: View {
                     if revealControls || !appModel.shouldShowMinimalMode {
                         controlPanel(for: session)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    if session.phase == .focus, session.mode != .pomodoro, session.isPaused {
+                        pauseStatusView(for: session)
+                            .opacity(isImmersive ? 0 : 1)
+                            .frame(height: isImmersive ? 0 : nil)
                     }
 
                     if isImmersive {
@@ -74,8 +90,13 @@ struct ActiveSessionView: View {
         }
         .onChange(of: appModel.shouldShowMinimalMode) { _, enabled in
             if enabled {
-                withAnimation(.smooth.delay(0.2)) {
+                if hasPlayedInitialImmersiveTransition {
                     revealControls = false
+                } else {
+                    withAnimation(.smooth.delay(0.2)) {
+                        revealControls = false
+                    }
+                    hasPlayedInitialImmersiveTransition = true
                 }
                 scheduleAutoImmersion()
             } else {
@@ -174,11 +195,27 @@ struct ActiveSessionView: View {
     }
 
     @ViewBuilder
+    private func pauseStatusView(for session: ActiveSessionSnapshot) -> some View {
+        if let deadline = session.pauseDeadline {
+            let remaining = max(0, deadline.timeIntervalSince(appModel.now))
+            VStack(spacing: 6) {
+                Label(String(localized: "session.pause.statusLimited"), systemImage: "pause.circle.fill")
+                Text(String(format: String(localized: "session.pause.remaining"), appModel.formattedDuration(remaining)))
+                    .font(.footnote)
+            }
+            .foregroundStyle(.white.opacity(0.85))
+        } else {
+            Label(String(localized: "session.pause.status"), systemImage: "pause.circle.fill")
+                .foregroundStyle(.white.opacity(0.85))
+        }
+    }
+
+    @ViewBuilder
     private func controlPanel(for session: ActiveSessionSnapshot) -> some View {
         VStack(spacing: 14) {
             if session.phase == .focus {
                 HStack(spacing: 12) {
-                    if session.mode == .stopwatch && !appModel.settings.advancedDisallowPause {
+                    if session.mode != .pomodoro && !appModel.settings.advancedDisallowPause {
                         Button(session.isPaused ? String(localized: "common.resume") : String(localized: "common.pause")) {
                             appModel.pauseOrResumeActiveSession()
                         }
@@ -212,15 +249,22 @@ struct ActiveSessionView: View {
     private func scheduleAutoImmersion() {
         autoHideTask?.cancel()
         guard appModel.shouldShowMinimalMode, revealControls else { return }
+        let delay = UInt64(max(1, appModel.minimalModeActivationDelaySeconds))
 
         autoHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             guard appModel.shouldShowMinimalMode, revealControls else { return }
             withAnimation(.smooth) {
                 revealControls = false
             }
         }
+    }
+
+    private func timerFontSize(for timerText: String) -> CGFloat {
+        guard isImmersive else { return 72 }
+        let hasHourPart = timerText.filter { $0 == ":" }.count >= 2
+        return hasHourPart ? 92 : 108
     }
 }
 

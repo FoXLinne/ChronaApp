@@ -4,38 +4,59 @@ import UIKit
 /// 关于应用页面，展示 App Icon、应用信息、贡献者和本地化语言支持
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     private let appIconTileSize: CGFloat = 128
+    private let defaultIconFileName = "appicon-iOS-Default-1024x1024@1x.png"
+    private let darkIconFileName = "appicon-iOS-Dark-1024x1024@1x.png"
 
-    /// 从应用包内读取主 App Icon
-    /// 通过 CFBundleIcons 查询原始文件名，读取 @2x 版本的 PNG
-    private var appIconImage: UIImage? {
-        guard
-            let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
-            let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
-            let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
-            let iconFile = iconFiles.first,
-            let iconPath = Bundle.main.path(forResource: "\(iconFile)@2x", ofType: "png")
-        else {
+    private var appVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
+        return version == build ? version : "\(version) (\(build))"
+    }
+
+    private var appVersionLine: String {
+        "\(String(localized: "about.version")) \(appVersionText)"
+    }
+
+    private var aboutIconFileName: String {
+        colorScheme == .dark ? darkIconFileName : defaultIconFileName
+    }
+
+    private var aboutIconImage: UIImage? {
+        loadIcon(named: aboutIconFileName)
+            ?? loadIcon(named: defaultIconFileName)
+            ?? loadIcon(named: darkIconFileName)
+    }
+
+    private func loadIcon(named fileName: String) -> UIImage? {
+        guard let resourceURL = Bundle.main.resourceURL else {
             return nil
         }
 
-        return UIImage(contentsOfFile: iconPath)
+        let candidates = [
+            resourceURL.appendingPathComponent(fileName),
+            resourceURL.appendingPathComponent("icons").appendingPathComponent(fileName)
+        ]
+
+        for url in candidates {
+            if let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+        }
+
+        return nil
     }
 
     /// 应用信息区域：Icon、应用名、简介文案
     private var heroSection: some View {
         VStack(spacing: 18) {
-            // App Icon（加载失败时显示备选符号）
             Group {
-                if let appIconImage {
-                    Image(uiImage: appIconImage)
+                if let aboutIconImage {
+                    Image(uiImage: aboutIconImage)
                         .resizable()
                         .scaledToFit()
-                } else {
-                    Image(systemName: "app.dashed")
-                        .font(.system(size: appIconTileSize * 0.72, weight: .medium))
-                        .foregroundStyle(.secondary)
                 }
             }
             .frame(width: appIconTileSize, height: appIconTileSize)
@@ -45,7 +66,7 @@ struct AboutView: View {
 
             // 应用名称
             Text("Chrona")
-                .font(.system(size: 42, weight: .semibold, design: .rounded))
+                .font(.system(size: 48, weight: .semibold, design: .rounded))
 
             // 应用简介
             Text(String(localized: "about.description"))
@@ -70,18 +91,39 @@ struct AboutView: View {
             // 贡献者信息
             Section {
                 HStack(spacing: 14) {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 36))
-                        .foregroundColor(.accentColor)
+                    Image(uiImage: loadIcon(named: "contributor1.jpg") ?? UIImage())
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(Circle())
 
                     Text("@星見カエデ")
                         .fontWeight(.semibold)
 
                     Spacer()
 
-                    Text(String(localized: "about.contributor.role"))
+                    Text(String(localized: "about.contributor.role.1"))
                         .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
                 }
+                
+                HStack(spacing: 14) {
+                    Image(uiImage: loadIcon(named: "contributor2.jpg") ?? UIImage())
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(Circle())
+
+                    Text("@Sen")
+                        .fontWeight(.semibold)
+
+                    Spacer()
+
+                    Text(String(localized: "about.contributor.role.2"))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                }
+
             } header: {
                 Text(String(localized: "about.contributors"))
             }
@@ -89,27 +131,39 @@ struct AboutView: View {
             // 支持的本地化语言列表
             Section {
                 HStack {
-                    Text(String(localized: "about.localization.builtin"))
-                        .fontWeight(.semibold)
-                    Spacer()
                     Text("English (US)")
                         .fontWeight(.semibold)
-                }
-
-                HStack {
+                    Spacer()
                     Text(String(localized: "about.localization.builtin"))
                         .fontWeight(.semibold)
-                    Spacer()
-                    Text("中文（简体）")
-                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
-                    Text(String(localized: "about.localization.ai"))
+                    Text("中文（简体）")
                         .fontWeight(.semibold)
                     Spacer()
+                    Text(String(localized: "about.localization.builtin"))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
                     Text("中文（繁體）")
                         .fontWeight(.semibold)
+                    Spacer()
+                    Text(String("@GPT-5.3-Codex"))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                }
+                
+                HStack {
+                    Text("日本語")
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Text(String("@Sen"))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
                 }
             } header: {
                 Text(String(localized: "about.localization"))
@@ -117,6 +171,18 @@ struct AboutView: View {
                 Text(String(localized: "about.localization.support"))
                     .font(.footnote)
             }
+
+            Section {
+                HStack {
+                    Spacer()
+                    Text(appVersionLine)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
         .listStyle(.insetGrouped)
         .navigationTitle(String(localized: "profile.about"))

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DailyCheckInView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
 
     var body: some View {
@@ -42,14 +43,21 @@ struct DailyCheckInView: View {
                             appModel.showGlobalNotice(String(localized: "checkin.success"))
                         }
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: appModel.hasCheckedInToday ? "checkmark" : "hand.tap.fill")
-                            Text(appModel.hasCheckedInToday ? String(localized: "checkin.action.done") : String(localized: "checkin.action"))
+                        if appModel.hasCheckedInToday {
+                            HStack(spacing: 8) {
+                                Text(String(localized: "checkin.action.done"))
+                            }
+                            .frame(width: 108, height: 32)
+                        } else {
+                            HStack(spacing: 8) {
+                                Text(String(localized: "checkin.action"))
+                            }
+                            .frame(width: 108, height: 32)
+                            .foregroundStyle(Color.white)
                         }
-                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.accentColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .buttonStyle(.glass(.regular.tint(.accentColor)))
                     .disabled(appModel.hasCheckedInToday)
                 }
                 .padding(.vertical, 4)
@@ -76,6 +84,12 @@ struct DailyCheckInView: View {
         }
         .navigationTitle(String(localized: "checkin.title"))
         .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+        .background {
+            if colorScheme == .light {
+                PageBackground(seed: "sunset")
+            }
+        }
     }
 
     private func statChip(title: String, value: String) -> some View {

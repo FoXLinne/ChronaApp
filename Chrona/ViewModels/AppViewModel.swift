@@ -14,9 +14,13 @@ final class AppViewModel: ObservableObject {
     @Published var activeSession: ActiveSessionSnapshot?
     @Published var now: Date = .now
     @Published var selectedStatisticsMonth: Date = .now
-    @Published var selectedStatisticsWeekOffset: Int = 0
+    @Published var statisticsTrendScrollDate: Date = .now
     @Published var quickLaunchTaskID: UUID?
-    @Published var selectedTab: AppTab = .active
+    @Published var selectedTab: AppTab = .active {
+        didSet {
+            updateImmersiveActivationClock(previousTab: oldValue, newTab: selectedTab)
+        }
+    }
     @Published var globalNotice: String?
     @Published var isActiveImmersiveChromeHidden = false
 
@@ -26,6 +30,8 @@ final class AppViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var noticeTask: Task<Void, Never>?
     private let isPreviewMode: Bool
+    private let statisticsTrendVisibleDays = 7
+    private var activeTabEnteredAt: Date? = .now
 
     init(forcePreviewMode: Bool = false) {
         let runningForPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -47,6 +53,8 @@ final class AppViewModel: ObservableObject {
             restoreReminder()
         }
         refreshDerivedState()
+        reconcileActiveSessionIfNeeded()
+        resetStatisticsTrendToToday()
     }
 
     static func previewModel() -> AppViewModel {
@@ -82,7 +90,12 @@ final class AppViewModel: ObservableObject {
         guard selectedTab == .active else { return false }
         guard settings.enableMinimalBlackMode, let activeSession else { return false }
         guard activeSession.phase == .focus, !activeSession.isPaused else { return false }
-        return (timerStatus?.elapsed ?? 0) >= 5
+        guard let activeTabEnteredAt else { return false }
+        return now.timeIntervalSince(activeTabEnteredAt) >= Double(settings.minimalModeActivationDelaySeconds)
+    }
+
+    var minimalModeActivationDelaySeconds: Int {
+        settings.minimalModeActivationDelaySeconds
     }
 
     func setActiveImmersiveChromeHidden(_ hidden: Bool) {
@@ -144,6 +157,16 @@ final class AppViewModel: ObservableObject {
         countdownEvents.sort(by: { $0.date < $1.date })
     }
 
+    func updateCountdownEvent(_ event: CountdownEvent) {
+        guard let index = countdownEvents.firstIndex(where: { $0.id == event.id }) else { return }
+        countdownEvents[index] = event
+        countdownEvents.sort(by: { $0.date < $1.date })
+    }
+
+    func deleteCountdownEvent(id: UUID) {
+        countdownEvents.removeAll(where: { $0.id == id })
+    }
+
     func deleteCountdownEvents(at offsets: IndexSet, from future: Bool) {
         let target = future ? futureEvents : pastEvents
         let ids = offsets.map { target[$0].id }
@@ -184,6 +207,7 @@ final class AppViewModel: ObservableObject {
         lastTaskID = task.id
         quickLaunchTaskID = task.id
         selectedTab = .active
+        activeTabEnteredAt = .now
         showNotice(String(localized: "session.started"))
         refreshDerivedState()
         return true
@@ -200,6 +224,19 @@ final class AppViewModel: ObservableObject {
 
     func showGlobalNotice(_ message: String) {
         showNotice(message)
+    }
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        now = .now
+
+        switch phase {
+        case .active:
+            reconcileActiveSessionIfNeeded()
+        case .inactive, .background:
+            persistState()
+        @unknown default:
+            break
+        }
     }
 
     func stopConsequence(forceAbandon: Bool = false) -> StopConsequence {
@@ -222,20 +259,27 @@ final class AppViewModel: ObservableObject {
 
     func pauseOrResumeActiveSession() {
         guard var session = activeSession else { return }
-        guard session.mode == .stopwatch else { return }
+        guard session.phase == .focus, session.mode != .pomodoro else { return }
         guard !settings.advancedDisallowPause else { return }
 
         if session.isPaused {
-            let pausedDuration = Date.now.timeIntervalSince(session.pausedAt ?? .now)
+            let resumeMoment = min(Date.now, session.pauseDeadline ?? Date.now)
+            let pausedDuration = resumeMoment.timeIntervalSince(session.pausedAt ?? resumeMoment)
             session.pausedAccumulated += pausedDuration
             session.pausedAt = nil
             session.isPaused = false
             session.pauseDeadline = nil
+            activeTabEnteredAt = selectedTab == .active ? .now : nil
+            showNotice(String(localized: "session.pause.resumed"))
         } else {
             session.isPaused = true
             session.pausedAt = .now
+            activeTabEnteredAt = nil
             if let limit = settings.stopwatchPauseLimitMinutes {
                 session.pauseDeadline = Calendar.current.date(byAdding: .minute, value: limit, to: .now)
+                showNotice(String(format: String(localized: "session.pause.entered.limit"), limit))
+            } else {
+                showNotice(String(localized: "session.pause.entered"))
             }
         }
         activeSession = session
@@ -258,7 +302,10 @@ final class AppViewModel: ObservableObject {
         }
 
         if session.phase == .focus, isQualified, !isAbandoned {
-            recordSession(session: session, duration: min(focusDuration, session.focusDuration ?? focusDuration), completed: isCompleted)
+            let recordedDuration = min(focusDuration, session.focusDuration ?? focusDuration)
+            if !hasRecordedSession(session: session, duration: recordedDuration, completed: isCompleted) {
+                recordSession(session: session, duration: recordedDuration, completed: isCompleted)
+            }
         }
 
         if session.phase == .focus {
@@ -266,11 +313,14 @@ final class AppViewModel: ObservableObject {
         } else {
             activeSession = nil
         }
+        activeTabEnteredAt = nil
         refreshDerivedState()
+        persistState()
     }
 
     func endRest() {
         activeSession = nil
+        activeTabEnteredAt = nil
         refreshDerivedState()
         persistState()
     }
@@ -350,16 +400,38 @@ final class AppViewModel: ObservableObject {
         .sorted(by: { $0.duration > $1.duration })
     }
 
-    func monthlyTrend(weekOffset: Int) -> [DayTrendEntry] {
-        let monthStart = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: selectedStatisticsMonth)) ?? .now
-        let weekStart = Calendar.current.date(byAdding: .day, value: weekOffset * 7, to: monthStart) ?? monthStart
-        return (0..<7).map { dayOffset in
-            let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: weekStart) ?? weekStart
+    func monthlyTrendPoints() -> [DayTrendEntry] {
+        let calendar = Calendar.current
+        let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
+        let monthEnd = statisticsMonthEnd(for: selectedStatisticsMonth)
+        let dayCount = max(1, calendar.dateComponents([.day], from: monthStart, to: monthEnd).day ?? 0)
+
+        return (0...dayCount).map { dayOffset in
+            let date = calendar.date(byAdding: .day, value: dayOffset, to: monthStart) ?? monthStart
             let duration = sessions
-                .filter { Calendar.current.isDate($0.endedAt, inSameDayAs: date) }
+                .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
                 .reduce(0) { $0 + $1.focusedDuration }
             return DayTrendEntry(date: date, duration: duration)
         }
+    }
+
+    func statisticsTrendDomain() -> ClosedRange<Date> {
+        let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
+        let monthEnd = statisticsMonthEnd(for: selectedStatisticsMonth)
+        return monthStart...monthEnd
+    }
+
+    var statisticsTrendVisibleLength: TimeInterval {
+        TimeInterval((statisticsTrendVisibleDays - 1) * 24 * 60 * 60)
+    }
+
+    func updateStatisticsTrendScrollDate(_ candidate: Date) {
+        statisticsTrendScrollDate = clampedStatisticsTrendStartDate(candidate, month: selectedStatisticsMonth)
+    }
+
+    func resetStatisticsTrendToToday() {
+        selectedStatisticsMonth = statisticsMonthStart(for: .now)
+        statisticsTrendScrollDate = defaultStatisticsTrendStartDate(for: selectedStatisticsMonth, anchorDate: .now)
     }
 
     func cycleStatisticsMonth(forward: Bool) {
@@ -370,7 +442,48 @@ final class AppViewModel: ObservableObject {
         } else {
             selectedStatisticsMonth = candidate
         }
-        selectedStatisticsWeekOffset = 0
+        selectedStatisticsMonth = statisticsMonthStart(for: selectedStatisticsMonth)
+        statisticsTrendScrollDate = defaultStatisticsTrendStartDate(for: selectedStatisticsMonth, anchorDate: selectedStatisticsMonth)
+    }
+
+    private func statisticsMonthStart(for date: Date) -> Date {
+        Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
+    }
+
+    private func statisticsMonthEnd(for date: Date) -> Date {
+        let calendar = Calendar.current
+        let monthStart = statisticsMonthStart(for: date)
+        guard let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart),
+              let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonthStart)
+        else {
+            return monthStart
+        }
+        return calendar.startOfDay(for: monthEnd)
+    }
+
+    private func maxStatisticsTrendStartDate(for month: Date) -> Date {
+        let calendar = Calendar.current
+        let monthEnd = statisticsMonthEnd(for: month)
+        let candidate = calendar.date(byAdding: .day, value: -(statisticsTrendVisibleDays - 1), to: monthEnd) ?? monthEnd
+        let monthStart = statisticsMonthStart(for: month)
+        return max(candidate, monthStart)
+    }
+
+    private func clampedStatisticsTrendStartDate(_ proposed: Date, month: Date) -> Date {
+        let calendar = Calendar.current
+        let normalized = calendar.startOfDay(for: proposed)
+        let monthStart = statisticsMonthStart(for: month)
+        let monthMax = maxStatisticsTrendStartDate(for: month)
+        if normalized < monthStart { return monthStart }
+        if normalized > monthMax { return monthMax }
+        return normalized
+    }
+
+    private func defaultStatisticsTrendStartDate(for month: Date, anchorDate: Date) -> Date {
+        let calendar = Calendar.current
+        let anchor = calendar.startOfDay(for: anchorDate)
+        let candidate = calendar.date(byAdding: .day, value: -(statisticsTrendVisibleDays - 1), to: anchor) ?? anchor
+        return clampedStatisticsTrendStartDate(candidate, month: month)
     }
 
     func applyTheme() -> ColorScheme? {
@@ -468,16 +581,15 @@ final class AppViewModel: ObservableObject {
     }
 
     private func handleTimerTick() {
-        guard var activeSession else { return }
+        guard activeSession != nil else { return }
 
-        // Auto-resume when a bounded pause expires so stopwatch sessions cannot stall forever.
-        if activeSession.isPaused, let deadline = activeSession.pauseDeadline, now >= deadline {
-            let pausedDuration = deadline.timeIntervalSince(activeSession.pausedAt ?? deadline)
-            activeSession.pausedAccumulated += pausedDuration
-            activeSession.pausedAt = nil
-            activeSession.isPaused = false
-            activeSession.pauseDeadline = nil
-            self.activeSession = activeSession
+        _ = autoResumeFromPauseLimitIfNeeded(now: now)
+
+        guard let activeSession else { return }
+
+        if activeSession.isPaused {
+            refreshDerivedState()
+            return
         }
 
         guard let status = timerStatus, status.isFinished else {
@@ -490,6 +602,70 @@ final class AppViewModel: ObservableObject {
         } else {
             endRest()
         }
+    }
+
+    private func reconcileActiveSessionIfNeeded() {
+        guard activeSession != nil else {
+            refreshDerivedState()
+            return
+        }
+
+        _ = autoResumeFromPauseLimitIfNeeded(now: now)
+
+        guard let activeSession else {
+            refreshDerivedState()
+            return
+        }
+
+        if activeSession.isPaused {
+            refreshDerivedState()
+            return
+        }
+
+        let status = TimerEngine.status(for: activeSession, now: now)
+        guard status.isFinished else {
+            refreshDerivedState()
+            return
+        }
+
+        if activeSession.phase == .focus {
+            stopActiveSession()
+        } else {
+            endRest()
+        }
+    }
+
+    private func hasRecordedSession(session: ActiveSessionSnapshot, duration: TimeInterval, completed: Bool) -> Bool {
+        sessions.contains {
+            $0.taskID == session.taskID &&
+            $0.mode == session.mode &&
+            $0.taskTitle == session.taskTitle &&
+            abs($0.startedAt.timeIntervalSince(session.startedAt)) < 1 &&
+            abs($0.focusedDuration - duration) < 1 &&
+            $0.wasCompleted == completed
+        }
+    }
+
+    @discardableResult
+    private func autoResumeFromPauseLimitIfNeeded(now: Date) -> Bool {
+        guard var session = activeSession,
+              session.mode != .pomodoro,
+              session.isPaused,
+              let deadline = session.pauseDeadline,
+              now >= deadline
+        else {
+            return false
+        }
+
+        let pausedDuration = deadline.timeIntervalSince(session.pausedAt ?? deadline)
+        session.pausedAccumulated += pausedDuration
+        session.pausedAt = nil
+        session.isPaused = false
+        session.pauseDeadline = nil
+        activeSession = session
+        activeTabEnteredAt = selectedTab == .active ? .now : nil
+        showNotice(String(localized: "session.pause.autoResumed"))
+        return true
     }
 
     private func refreshDerivedState() {
@@ -554,5 +730,42 @@ final class AppViewModel: ObservableObject {
                 self?.globalNotice = nil
             }
         }
+    }
+
+    private func updateImmersiveActivationClock(previousTab: AppTab, newTab: AppTab) {
+        if newTab == .active {
+            if previousTab != .active {
+                if let session = activeSession, session.phase == .focus, !session.isPaused {
+                    activeTabEnteredAt = .now
+                } else {
+                    activeTabEnteredAt = nil
+                }
+            }
+        } else {
+            activeTabEnteredAt = nil
+        }
+    }
+
+    func clearAllData() {
+        guard !isPreviewMode else { return }
+
+        // Reset to default state
+        let defaultSnapshot = AppSnapshot.default
+        tasks = defaultSnapshot.tasks
+        sessions = []
+        countdownEvents = []
+        profile = ProfileInfo.default
+        settings = AppSettings.default
+        checkInDates = []
+        lastTaskID = nil
+        quickLaunchTaskID = nil
+        activeSession = nil
+        selectedTab = .active
+
+        // Clear persisted data
+        persistence.save(defaultSnapshot)
+        notifications.cancelDailyReminder()
+        refreshDerivedState()
+        showNotice(String(localized: "settings.clearData.success"))
     }
 }

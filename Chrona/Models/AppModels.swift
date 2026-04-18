@@ -142,21 +142,23 @@ struct AppSettings: Codable, Equatable {
     var advancedDisallowPause: Bool
     var advancedDisallowEarlyFinish: Bool
     var stopwatchPauseLimitMinutes: Int?
+    var minimalModeActivationDelaySeconds: Int
 
     static let `default` = AppSettings(
-        autoMoveCompletedTaskToTop: true,
+        autoMoveCompletedTaskToTop: false,
         strikethroughCompletedTask: true,
         enableMinimalBlackMode: true,
-        keepScreenAwake: false,
+        keepScreenAwake: true,
         restDurationMinutes: 5,
         theme: .system,
-        liveActivitiesEnabled: false,
+        liveActivitiesEnabled: true,
         dailyReminderEnabled: false,
         dailyReminderHour: 20,
         dailyReminderMinute: 0,
         advancedDisallowPause: false,
         advancedDisallowEarlyFinish: false,
-        stopwatchPauseLimitMinutes: nil
+        stopwatchPauseLimitMinutes: nil,
+        minimalModeActivationDelaySeconds: 5
     )
 }
 

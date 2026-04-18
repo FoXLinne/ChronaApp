@@ -1,53 +1,67 @@
 import SwiftUI
 
 struct TaskListView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
     @State private var editorRoute: TaskEditorRoute?
     @State private var pendingDeletion: TaskItem?
     @State private var searchText = ""
     @State private var selectedModes = Set(FocusMode.allCases)
 
+    // Controls vertical spacing between task sections.
+    private let taskSectionSpacing: CGFloat = 16
+
     var body: some View {
         NavigationStack {
             List {
                 ForEach(displayTasks) { task in
-                    TaskRow(task: task) {
-                        _ = appModel.startTask(task)
-                    }
-                    .contextMenu {
-                        Button(String(localized: "common.edit")) {
-                            guardTaskMutation {
-                                editorRoute = .edit(task)
-                            }
-                        }
-                        Button(String(localized: "task.start")) {
+                    Section {
+                        TaskRow(task: task) {
                             _ = appModel.startTask(task)
                         }
-                        Button(String(localized: "common.delete"), role: .destructive) {
-                            guardTaskMutation {
-                                pendingDeletion = task
+                        .contextMenu {
+                            Button(String(localized: "common.edit")) {
+                                guardTaskMutation {
+                                    editorRoute = .edit(task)
+                                }
+                            }
+                            Button(String(localized: "task.start")) {
+                                _ = appModel.startTask(task)
+                            }
+                            Button(String(localized: "common.delete"), role: .destructive) {
+                                guardTaskMutation {
+                                    pendingDeletion = task
+                                }
                             }
                         }
-                    }
-                    .swipeActions(edge: .trailing) {
-                        if !isTaskMutationLocked {
-                            Button {
-                                editorRoute = .edit(task)
-                            } label: {
-                                Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
-                            }
-                            .tint(.accentColor)
+                        .swipeActions(edge: .trailing) {
+                            if !isTaskMutationLocked {
+                                Button(role: .destructive) {
+                                    pendingDeletion = task
+                                } label: {
+                                    Label(String(localized: "common.delete"), systemImage: "trash")
+                                }
 
-                            Button(role: .destructive) {
-                                pendingDeletion = task
-                            } label: {
-                                Label(String(localized: "common.delete"), systemImage: "trash")
+                                Button {
+                                    editorRoute = .edit(task)
+                                } label: {
+                                    Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
+                                }
+                                .tint(.accentColor)
                             }
                         }
                     }
                 }
                 .onDelete(perform: handleDelete)
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+            .background {
+                if colorScheme == .light {
+                    PageBackground(seed: "mint")
+                }
+            }
+            .listSectionSpacing(taskSectionSpacing)
             .navigationTitle(String(localized: "tab.tasks"))
             .searchable(
                 text: $searchText,
@@ -199,23 +213,30 @@ private struct TaskRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Circle()
                 .fill(LinearGradient(colors: previewColors, startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 60, height: 60)
+                .frame(width: 48, height: 48)
                 .overlay {
                     Image(systemName: symbol)
-                        .font(.title3)
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(.white)
                 }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
-                    .font(.headline)
+                    .font(.system(.headline, design: .rounded))
                     .foregroundStyle(isCompletedToday && appModel.settings.strikethroughCompletedTask ? .secondary : .primary)
                     .strikethrough(isCompletedToday && appModel.settings.strikethroughCompletedTask)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(modeLabel)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    if let detail = subtitleDetail {
+                        Text(detail)
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Spacer()
@@ -238,8 +259,8 @@ private struct TaskRow: View {
                 }
             }
         }
+        .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .padding(.vertical, 6)
         .opacity(isCompletedToday && appModel.settings.strikethroughCompletedTask ? 0.6 : 1)
     }
 
@@ -259,13 +280,24 @@ private struct TaskRow: View {
         }
     }
 
-    private var subtitle: String {
+    private var modeLabel: String {
+        switch task.mode {
+        case .pomodoro:
+            return String(localized: "mode.pomodoro")
+        case .stopwatch:
+            return String(localized: "mode.stopwatch")
+        case .countdown:
+            return String(localized: "mode.countdown")
+        }
+    }
+
+    private var subtitleDetail: String? {
         switch task.mode {
         case .pomodoro:
             let preset = task.pomodoroPreset
-            return String(format: "%@ %d/%d", String(localized: "mode.pomodoro"), Int(preset.workDuration / 60), Int(preset.breakDuration / 60))
+            return "\(Int(preset.workDuration / 60))/\(Int(preset.breakDuration / 60))"
         case .stopwatch:
-            return String(localized: "mode.stopwatch")
+            return nil
         case .countdown:
             return Duration.seconds(task.countdownDuration).formatted(.time(pattern: .hourMinuteSecond))
         }
@@ -280,20 +312,7 @@ private struct TaskRow: View {
     }
 
     private var previewColors: [Color] {
-        switch task.backgroundName {
-        case "forest":
-            return [Color.green, Color.mint]
-        case "ocean":
-            return [Color.blue, Color.cyan]
-        case "lavender":
-            return [Color.purple, Color.indigo]
-        case "midnight":
-            return [Color.black, Color.blue]
-        case "mint":
-            return [Color.teal, Color.mint]
-        default:
-            return [Color.orange, Color.pink]
-        }
+        ThemePalette.previewColors(for: task.backgroundName)
     }
 }
 

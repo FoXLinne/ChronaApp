@@ -3,6 +3,7 @@ import PhotosUI
 import UIKit
 
 struct ProfileView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
     @State private var showAboutSheet = false
     @State private var showProfileEditor = false
@@ -28,7 +29,7 @@ struct ProfileView: View {
                         showProfileEditor = true
                     } label: {
                         HStack(spacing: 12) {
-                            AvatarSymbolView(symbol: appModel.profile.avatarSymbol, imageData: appModel.profile.avatarImageData, size: 58)
+                            AvatarSymbolView(imageData: appModel.profile.avatarImageData, size: 58)
                                 .frame(width: profileLeadingWidth, alignment: .leading)
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -39,16 +40,17 @@ struct ProfileView: View {
                                 Text(displaySignature)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-
-                            Spacer(minLength: 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .layoutPriority(1)
 
                             Image(systemName: "chevron.right")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(.tertiary)
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 6)
                         .contentShape(Rectangle())
                     }
                     .tint(.primary)
@@ -83,12 +85,16 @@ struct ProfileView: View {
                     } label: {
                         Text(String(localized: "profile.settings"))
                     }
-                }
 
-                Section {
                     Button(String(localized: "profile.about")) {
                         showAboutSheet = true
                     }
+                }
+            }
+            .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+            .background {
+                if colorScheme == .light {
+                    PageBackground(seed: "sunset")
                 }
             }
             .navigationTitle(String(localized: "tab.profile"))
@@ -109,7 +115,7 @@ struct ProfileView: View {
                     }
                 }
                 .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                .presentationDragIndicator(.hidden)
             }
         }
     }
@@ -144,13 +150,8 @@ private struct CheckInLeadingCluster: View {
 }
 
 private struct AvatarSymbolView: View {
-    let symbol: String
     let imageData: Data?
     let size: CGFloat
-
-    private var resolvedSymbol: String {
-        UIImage(systemName: symbol) == nil ? "person.crop.circle.fill" : symbol
-    }
 
     private var avatarImage: UIImage? {
         guard let imageData else { return nil }
@@ -160,22 +161,16 @@ private struct AvatarSymbolView: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
 
             if let avatarImage {
                 Image(uiImage: avatarImage)
                     .resizable()
                     .scaledToFill()
             } else {
-                Image(systemName: resolvedSymbol)
+                Image(systemName: "person.crop.circle")
                     .font(.system(size: size * 0.46, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.accent)
             }
         }
         .frame(width: size, height: size)
@@ -195,86 +190,62 @@ private struct ProfileEditorView: View {
     @State private var cropSourceImage: UIImage?
     @State private var showAvatarCropper = false
 
-    private let avatarCandidates = [
-        "person.crop.circle.fill",
-        "person.fill",
-        "face.smiling.fill",
-        "brain.head.profile",
-        "sparkles",
-        "bolt.heart.fill",
-        "leaf.fill",
-        "moon.stars.fill",
-        "hare.fill",
-        "tortoise.fill",
-        "book.fill",
-        "pencil"
-    ]
+    private var previewName: String {
+        let trimmed = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Chrona" : trimmed
+    }
+
+    private var previewSignature: String {
+        let trimmed = profile.signature.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? String(localized: "profile.signature") : trimmed
+    }
 
     var body: some View {
         Form {
-            Section {
-                HStack(spacing: 14) {
-                    AvatarSymbolView(symbol: profile.avatarSymbol, imageData: profile.avatarImageData, size: 72)
+            Section(String(localized: "profile.preview")) {
+                HStack(spacing: 16) {
+                    AvatarSymbolView(imageData: profile.avatarImageData, size: 84)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Chrona" : profile.name)
-                            .font(.headline)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(previewName)
+                            .font(.title3.weight(.semibold))
 
-                        Text(profile.signature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? String(localized: "profile.signature") : profile.signature)
+                        Text(previewSignature)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
+
+                    Spacer(minLength: 0)
                 }
-                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 10)
+            }
+
+            Section(String(localized: "profile.user")) {
+                TextField(String(localized: "profile.name"), text: $profile.name)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled(true)
+
+                TextField(String(localized: "profile.signature"), text: $profile.signature, axis: .vertical)
+                    .lineLimit(2...3)
             }
 
             Section(String(localized: "profile.avatar")) {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    Label(String(localized: "profile.avatar.photo.pick"), systemImage: "photo")
+                    Text(String(localized: "profile.avatar.photo.pick"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .tint(.accentColor)
 
                 if profile.avatarImageData != nil {
                     Button(role: .destructive) {
                         profile.avatarImageData = nil
                     } label: {
-                        Label(String(localized: "profile.avatar.photo.remove"), systemImage: "trash")
+                        Text(String(localized: "profile.avatar.photo.remove"))
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: 10)], spacing: 10) {
-                    ForEach(avatarCandidates, id: \.self) { symbol in
-                        Button {
-                            profile.avatarImageData = nil
-                            profile.avatarSymbol = symbol
-                        } label: {
-                            Image(systemName: symbol)
-                                .font(.system(size: 21, weight: .medium))
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .foregroundStyle(profile.avatarSymbol == symbol ? Color.white : Color.primary)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(
-                                            profile.avatarSymbol == symbol
-                                                ? Color.accentColor
-                                                : Color(uiColor: .secondarySystemGroupedBackground)
-                                        )
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 4)
-
-                TextField(String(localized: "profile.avatar"), text: $profile.avatarSymbol)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-
-            Section(String(localized: "profile.user")) {
-                TextField(String(localized: "profile.name"), text: $profile.name)
-                TextField(String(localized: "profile.signature"), text: $profile.signature, axis: .vertical)
-                    .lineLimit(2...4)
             }
         }
         .navigationTitle(String(localized: "common.edit"))
@@ -290,7 +261,7 @@ private struct ProfileEditorView: View {
                     }
                 }
                 .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                .presentationDragIndicator(.hidden)
             }
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
@@ -311,8 +282,10 @@ private struct ProfileEditorView: View {
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button(String(localized: "common.cancel")) {
+                Button {
                     onCancel()
+                } label: {
+                    Image(systemName: "xmark")
                 }
             }
 
@@ -451,10 +424,15 @@ private struct AvatarCropperView: View {
             }
             .navigationTitle(String(localized: "profile.avatar.crop"))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color.black.opacity(0.92), for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "common.cancel")) {
+                    Button {
                         onCancel()
+                    } label: {
+                        Image(systemName: "xmark")
                     }
                 }
 
