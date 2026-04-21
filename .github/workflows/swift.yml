@@ -15,6 +15,12 @@ jobs:
     runs-on: macos-latest
 
     steps:
+
+    - name: Set up Xcode
+      uses: xcode/checkout@v2
+      with:
+        xcode-version: '26.4'
+
     - uses: actions/checkout@v4
     - name: Build iOS App
       run: |
