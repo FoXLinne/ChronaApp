@@ -5,17 +5,17 @@
 <h1 align="center">Chrona</h1>
 
 <p align="center">
-  <a href="https://github.com/kaedekr/Chrona/releases">
-    <img src="https://img.shields.io/github/v/release/kaedekr/Chrona?style=flat-square" alt="Latest Release">
+  <a href="https://github.com/FoXLinne/ChronaApp/releases">
+    <img src="https://img.shields.io/github/v/release/FoXLinne/ChronaApp?style=flat-square" alt="Latest Release">
   </a>
-  <a href="https://github.com/kaedekr/Chrona/stargazers">
-    <img src="https://img.shields.io/github/stars/kaedekr/Chrona?style=flat-square" alt="Stars">
+  <a href="https://github.com/FoXLinne/ChronaApp/stargazers">
+    <img src="https://img.shields.io/github/stars/FoXLinne/ChronaApp?style=flat-square" alt="Stars">
   </a>
-  <a href="https://github.com/kaedekr/Chrona/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/kaedekr/Chrona?style=flat-square" alt="License">
+  <a href="https://github.com/FoXLinne/ChronaApp/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/FoXLinne/ChronaApp?style=flat-square" alt="License">
   </a>
-  <a href="https://github.com/kaedekr/Chrona/issues">
-    <img src="https://img.shields.io/github/issues/kaedekr/Chrona?style=flat-square" alt="Issues">
+  <a href="https://github.com/FoXLinne/ChronaApp/issues">
+    <img src="https://img.shields.io/github/issues/FoXLinne/ChronaApp?style=flat-square" alt="Issues">
   </a>
 </p>
 
