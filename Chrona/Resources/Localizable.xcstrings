@@ -289,6 +289,29 @@
         }
       }
     },
+    "about.localization.ai" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI-translated"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI翻訳"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI翻译"
+          }
+        }
+      }
+    },
     "about.localization.builtin" : {
       "localizations" : {
         "en" : {
@@ -322,25 +345,25 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Built-in: English (US) and Simplified Chinese. Traditional Chinese is currently AI-translated, and contributors are welcome to improve or add more languages."
+            "value" : "The localized content is generated using AI translation and may not be accurate. Contributions to improve translations and add more languages are welcome."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "内蔵：英語（US）と簡体字中国語。繁体字中国語と日本語は現在AI翻訳されており、貢献者による改善や追加を歓迎します。"
+            "value" : "ローカライズされた内容はAI翻訳を使用しており、正確でない可能性があります。ほかの貢献者による翻訳の補足や、より多くの言語への対応を歓迎します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "内建中文（简体）与 English (US) 本地化，欢迎其他贡献者补充和完善更多语言。"
+            "value" : "本地化内容采用AI翻译，其效果可能不准确，欢迎其他贡献者补充和完善更多语言。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "內建中文（繁體）與 English (US) 在地化，歡迎其他貢獻者補充和完善更多語言。"
+            "value" : "本地化內容採用 AI 翻譯，其效果可能不準確，歡迎其他貢獻者補充和完善更多語言。"
           }
         }
       }
@@ -2432,7 +2455,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Go to task list"
+            "value" : "Task List"
           }
         },
         "ja" : {
@@ -2740,7 +2763,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Start Last Task"
+            "value" : "Resume"
           }
         },
         "ja" : {
@@ -4167,25 +4190,25 @@
       "localizations" : {
         "en" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Enter system settings to change options such as language."
           }
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "システム設定で言語などのオプションを変更できます"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跳转至系统设置页面，可更改语言等设置选项"
+            "value" : "进入系统设置可更改语言等选项"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "進入系統設定可更改語言等選項"
           }
         }
@@ -5148,7 +5171,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hours"
+            "value" : "H"
           }
         },
         "ja" : {
@@ -5176,7 +5199,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Minutes"
+            "value" : "MIN"
           }
         },
         "ja" : {
@@ -5204,7 +5227,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seconds"
+            "value" : "S"
           }
         },
         "ja" : {
@@ -5324,7 +5347,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "times"
+            "value" : "X"
           }
         },
         "ja" : {
