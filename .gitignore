@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcarchive
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Xcode user-specific settings
+xcuserdata/
+*.xcuserdatad
+*.xcuserstate
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+
+# Dependency manager build outputs
+Carthage/Build/
+Pods/
+
+# Temporary files
+*.swp
+*.tmp
+*.log
+.github/
+
+# TRAE
+.trae/
