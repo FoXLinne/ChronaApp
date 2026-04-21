@@ -98,6 +98,7 @@ struct SettingsView: View {
             .disabled(isRuntimeLocked)
 
             Section(String(localized: "settings.category.appearance")) {
+
                 Toggle(isOn: $draft.enableMinimalBlackMode) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(String(localized: "settings.immersive"))
@@ -162,6 +163,20 @@ struct SettingsView: View {
                     )
                 }
                 Toggle(String(localized: "settings.liveActivities"), isOn: $draft.liveActivitiesEnabled)
+            }
+
+            Section {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text(String(localized: "settings.systemSettings.action"))
+                }
+            } header: {
+                Text(String(localized: "settings.category.system"))
+            } footer: {
+                Text(String(localized: "settings.systemSettings.footer"))
             }
 
             Section(String(localized: "settings.category.other")) {
