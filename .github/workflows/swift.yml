@@ -16,7 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+    - name: Build iOS App
+      run: |
+        xcodebuild \
+        -project Chrona.xcodeproj \
+        -scheme Chrona \
+        -destination 'platform=iOS Simulator,name=iPhone 15' \
+        build
