@@ -96,6 +96,18 @@ struct ActiveSessionView: View {
             appModel.setActiveImmersiveChromeHidden(isImmersive)
             disableClockAnimation = isImmersive
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !isImmersive {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gear")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }.toolbar(isImmersive ? .hidden : .visible, for: .navigationBar)
         .onChange(of: appModel.shouldShowMinimalMode) { _, enabled in
             if enabled {
                 if hasPlayedInitialImmersiveTransition {
