@@ -23,11 +23,13 @@ struct RootTabView: View {
                 }
 
             // 专注页面 - 显示当前正在进行的专注会话
-            ActiveSessionView()
-                .tag(AppTab.active)
-                .tabItem {
-                    Label(String(localized: "tab.active"), systemImage: "timer")
-                }
+            NavigationStack {
+                ActiveSessionView()
+            }
+            .tag(AppTab.active)
+            .tabItem {
+                Label(String(localized: "tab.active"), systemImage: "timer")
+            }
 
             // 统计页面 - 显示用户的统计数据和图表
             StatisticsView()
@@ -52,7 +54,7 @@ struct RootTabView: View {
             if let message = appModel.globalNotice {
                 Text(message)  // 显示通知消息文本
                     .font(.subheadline.weight(.semibold))  // 设置字体样式：小标题，半粗体
-                    .foregroundStyle(.white)  // 设置文字颜色为白色
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 14)  // 设置水平内边距为14
                     .padding(.vertical, 10)    // 设置垂直内边距为10
                     .glassEffect(.regular.interactive()) // 使用液态玻璃效果，支持交互
@@ -63,6 +65,18 @@ struct RootTabView: View {
         }
         // 为全局通知消息的出现/消失添加平滑动画
         .animation(.smooth, value: appModel.globalNotice)
+        // 视图首次出现时同步屏幕旋转状态
+        // 处理应用冷启动或视图重建时，旋转权限可能未初始化的边缘情况
+        .onAppear {
+            // 仅当当前标签为专注页（.active）时才允许旋转，其余标签页强制锁定竖屏
+            InterfaceOrientationController.setRotationEnabled(appModel.selectedTab == .active)
+        }
+        // 监听标签页切换事件，实时同步屏幕旋转权限
+        // 确保用户离开专注页时立即锁回竖屏，进入专注页时解锁横屏
+        .onChange(of: appModel.selectedTab) { _, newTab in
+            // 只有专注计时页（.active）需要支持横屏以适配沉浸式计时界面
+            InterfaceOrientationController.setRotationEnabled(newTab == .active)
+        }
     }
 }
 
