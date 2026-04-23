@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftUI
+import ActivityKit
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -24,6 +25,7 @@ final class AppViewModel: ObservableObject {
     @Published var globalNotice: String?
     @Published var isActiveImmersiveChromeHidden = false
 
+    private var timerActivity: Activity<TimerActivityAttributes>?
     private let persistence = PersistenceService()
     private let notifications = NotificationService()
     private var ticker: AnyCancellable?
@@ -209,7 +211,7 @@ final class AppViewModel: ObservableObject {
         selectedTab = .active
         activeTabEnteredAt = .now
         showNotice(String(localized: "session.started"))
-        refreshDerivedState()
+        refreshDerivedState(shouldSyncActivity: true)
         return true
     }
 
@@ -283,7 +285,7 @@ final class AppViewModel: ObservableObject {
             }
         }
         activeSession = session
-        refreshDerivedState()
+        refreshDerivedState(shouldSyncActivity: true)
     }
 
     func stopActiveSession(forceAbandon: Bool = false) {
@@ -314,14 +316,14 @@ final class AppViewModel: ObservableObject {
             activeSession = nil
         }
         activeTabEnteredAt = nil
-        refreshDerivedState()
+        refreshDerivedState(shouldSyncActivity: true)
         persistState()
     }
 
     func endRest() {
         activeSession = nil
         activeTabEnteredAt = nil
-        refreshDerivedState()
+        refreshDerivedState(shouldSyncActivity: true)
         persistState()
     }
 
@@ -606,25 +608,25 @@ final class AppViewModel: ObservableObject {
 
     private func reconcileActiveSessionIfNeeded() {
         guard activeSession != nil else {
-            refreshDerivedState()
+            refreshDerivedState(shouldSyncActivity: true)
             return
         }
 
         _ = autoResumeFromPauseLimitIfNeeded(now: now)
 
         guard let activeSession else {
-            refreshDerivedState()
+            refreshDerivedState(shouldSyncActivity: true)
             return
         }
 
         if activeSession.isPaused {
-            refreshDerivedState()
+            refreshDerivedState(shouldSyncActivity: true)
             return
         }
 
         let status = TimerEngine.status(for: activeSession, now: now)
         guard status.isFinished else {
-            refreshDerivedState()
+            refreshDerivedState(shouldSyncActivity: true)
             return
         }
 
@@ -665,12 +667,130 @@ final class AppViewModel: ObservableObject {
         activeSession = session
         activeTabEnteredAt = selectedTab == .active ? .now : nil
         showNotice(String(localized: "session.pause.autoResumed"))
+        syncLiveActivity()
         return true
     }
 
-    private func refreshDerivedState() {
+    private func refreshDerivedState(shouldSyncActivity: Bool = false) {
         ScreenAwakeController.update(isEnabled: settings.keepScreenAwake && activeSession != nil)
+        if shouldSyncActivity {
+            syncLiveActivity()
+        }
     }
+
+    private func syncLiveActivity() {
+        guard settings.liveActivitiesEnabled else {
+            Task {
+                for activity in Activity<TimerActivityAttributes>.activities {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
+            }
+            return
+        }
+
+        if let session = activeSession {
+            let status = TimerEngine.status(for: session, now: now)
+
+            // 倒计时/番茄钟：会话结束的未来时间点（秒表为 nil）
+            let endTime = status.remaining.map { Date.now.addingTimeInterval($0) }
+
+            // 秒表正向计时的参考起点 = 现在 - 已计时长（Widget 自动正向计数，无需 App 推送）
+            let elapsedReferenceDate = Date.now.addingTimeInterval(-status.elapsed)
+
+            // 暂停时的冻结显示文字（用于 Widget 显示静态快照，不会随时间自动更新）
+            let pausedTimerText: String
+            if session.isPaused {
+                if session.mode == .stopwatch {
+                    pausedTimerText = formattedDuration(status.elapsed)
+                } else {
+                    pausedTimerText = formattedDuration(status.remaining ?? 0)
+                }
+            } else {
+                pausedTimerText = ""
+            }
+
+            // 阶段标签（暂停时覆盖为「已暂停」）
+            let phaseLabel: String
+            if session.isPaused {
+                phaseLabel = String(localized: "la.paused")
+            } else if session.phase == .focus {
+                phaseLabel = String(localized: "la.phase.focus")
+            } else {
+                phaseLabel = String(localized: "la.phase.rest")
+            }
+
+            let state = TimerActivityAttributes.ContentState(
+                endTime: endTime,
+                elapsedReferenceDate: elapsedReferenceDate,
+                pausedTimerText: pausedTimerText,
+                taskTitle: session.taskTitle,
+                phaseLabel: phaseLabel,
+                modeLabel: liveActivityModeLabel(for: session.mode),
+                modeSystemImage: liveActivityModeImage(for: session.mode),
+                isPaused: session.isPaused,
+                isStopwatch: session.mode == .stopwatch
+            )
+
+            // staleDate：倒计时/番茄钟在结束时间标记为过期；秒表无限期
+            let staleDate = endTime
+
+            if let activity = timerActivity {
+                Task {
+                    await activity.update(ActivityContent(state: state, staleDate: staleDate))
+                }
+            } else {
+                // 尝试复用应用重启前遗留的活动实例
+                if let existingActivity = Activity<TimerActivityAttributes>.activities.first {
+                    timerActivity = existingActivity
+                    Task {
+                        await existingActivity.update(ActivityContent(state: state, staleDate: staleDate))
+                    }
+                } else {
+                    // 启动新活动
+                    let attributes = TimerActivityAttributes(taskID: session.taskID)
+                    do {
+                        timerActivity = try Activity.request(
+                            attributes: attributes,
+                            content: ActivityContent(state: state, staleDate: staleDate),
+                            pushType: nil
+                        )
+                    } catch {
+                        print("Live Activity 启动失败: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } else {
+            // 没有活跃会话，结束所有活动
+            let activityRef = timerActivity
+            timerActivity = nil
+            Task {
+                if let activity = activityRef {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                } else {
+                    for activity in Activity<TimerActivityAttributes>.activities {
+                        await activity.end(nil, dismissalPolicy: .immediate)
+                    }
+                }
+            }
+        }
+    }
+
+    private func liveActivityModeLabel(for mode: FocusMode) -> String {
+        switch mode {
+        case .pomodoro:  return String(localized: "mode.pomodoro")
+        case .countdown: return String(localized: "mode.countdown")
+        case .stopwatch: return String(localized: "mode.stopwatch")
+        }
+    }
+
+    private func liveActivityModeImage(for mode: FocusMode) -> String {
+        switch mode {
+        case .pomodoro:  return "timer"
+        case .countdown: return "hourglass"
+        case .stopwatch: return "stopwatch"
+        }
+    }
+
 
     private func wirePersistence() {
         // 数据持久化：监听所有状态变化
@@ -793,7 +913,7 @@ final class AppViewModel: ObservableObject {
         // Clear persisted data
         persistence.save(defaultSnapshot)
         notifications.cancelDailyReminder()
-        refreshDerivedState()
+        refreshDerivedState(shouldSyncActivity: true)
         showNotice(String(localized: "settings.clearData.success"))
     }
 }

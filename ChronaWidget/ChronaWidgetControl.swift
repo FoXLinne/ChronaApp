@@ -5,6 +5,7 @@
 //  Created by KaedeKR on 2026/4/23.
 //
 
+import ActivityKit
 import AppIntents
 import SwiftUI
 import WidgetKit
@@ -42,7 +43,8 @@ extension ChronaWidgetControl {
         }
 
         func currentValue(configuration: TimerConfiguration) async throws -> Value {
-            let isRunning = true // Check if the timer is running
+            // 通过 ActivityKit 检查是否存在活跃的计时器 Live Activity
+            let isRunning = !Activity<TimerActivityAttributes>.activities.isEmpty
             return ChronaWidgetControl.Value(isRunning: isRunning, name: configuration.timerName)
         }
     }
