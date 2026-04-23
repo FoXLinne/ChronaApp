@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import SwiftUI
 import ActivityKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -915,5 +916,72 @@ final class AppViewModel: ObservableObject {
         notifications.cancelDailyReminder()
         refreshDerivedState(shouldSyncActivity: true)
         showNotice(String(localized: "settings.clearData.success"))
+    }
+
+    // MARK: - 数据导入导出 (Persistence Import/Export)
+    
+    /// 将当前所有数据导出为 JSON 格式的 Data
+    func exportData() -> Data? {
+        guard !isPreviewMode else { return nil }
+        
+        // 创建当前数据的完整快照
+        let snapshot = AppSnapshot(
+            tasks: tasks,
+            sessions: sessions,
+            countdownEvents: countdownEvents,
+            profile: profile,
+            settings: settings,
+            checkInDates: checkInDates,
+            lastTaskID: lastTaskID,
+            activeSession: activeSession
+        )
+        
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .prettyPrinted // 导出的 JSON 增加可读性
+        
+        return try? encoder.encode(snapshot)
+    }
+    
+    /// 从 JSON Data 中恢复数据，返回是否成功
+    func importData(from data: Data) -> Bool {
+        guard !isPreviewMode else { return false }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        // 1. 尝试解析数据
+        guard let snapshot = try? decoder.decode(AppSnapshot.self, from: data) else {
+            print("Import: JSON 解析失败")
+            return false
+        }
+        
+        // 2. 更新内存状态 (触发 @Published 响应)
+        // 注意：AppViewModel 是 @MainActor，所以这些更新都在主线程执行
+        tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
+        sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+        countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
+        profile = snapshot.profile
+        settings = snapshot.settings
+        checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
+        lastTaskID = snapshot.lastTaskID
+        quickLaunchTaskID = snapshot.lastTaskID
+        activeSession = snapshot.activeSession
+        
+        // 3. 同步到磁盘和系统服务
+        persistence.save(snapshot)
+        refreshDerivedState(shouldSyncActivity: true) // 刷新灵动岛等
+        syncReminder() // 同步提醒事项
+        
+        showNotice(String(localized: "settings.importData.success"))
+        return true
+    }
+}
+
+// MARK: - 自定义文件类型
+
+extension UTType {
+    static var chronaData: UTType {
+        UTType.json
     }
 }

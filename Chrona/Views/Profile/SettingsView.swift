@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppViewModel
@@ -6,6 +8,9 @@ struct SettingsView: View {
     @State private var draft = AppSettings.default
     @State private var showClearDataConfirm = false
     @State private var showClearDataFinal = false
+    @State private var importedData: Data? = nil
+    @State private var showImportPicker = false
+    @State private var showImportConfirm = false
 
     private var isRuntimeLocked: Bool {
         appModel.activeSession != nil
@@ -179,6 +184,20 @@ struct SettingsView: View {
                 Text(String(localized: "settings.systemSettings.footer"))
             }
 
+            Section(String(localized: "settings.category.data")) {
+                Button {
+                    exportData()
+                } label: {
+                    Text(String(localized: "settings.exportData"))
+                }
+                
+                Button {
+                    showImportPicker = true
+                } label: {
+                    Text(String(localized: "settings.importData"))
+                }
+            }
+
             Section(String(localized: "settings.category.other")) {
                 Button(role: .destructive) {
                     showClearDataConfirm = true
@@ -217,6 +236,23 @@ struct SettingsView: View {
             }
         } message: {
             Text(String(localized: "settings.clearData.final.message"))
+        }
+        .alert(String(localized: "settings.importData.confirm.title"), isPresented: $showImportConfirm) {
+            Button(String(localized: "common.cancel"), role: .cancel) {
+                importedData = nil
+            }
+            Button(String(localized: "settings.importData"), role: .destructive) {
+                performImport()
+            }
+        } message: {
+            Text(String(localized: "settings.importData.confirm.message"))
+        }
+        .fileImporter(
+            isPresented: $showImportPicker,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImportResult(result)
         }
     }
 
@@ -298,6 +334,80 @@ struct SettingsView: View {
         merged.restDurationMinutes = appModel.settings.restDurationMinutes
         merged.stopwatchPauseLimitMinutes = appModel.settings.stopwatchPauseLimitMinutes
         return merged
+    }
+
+    // MARK: - 数据导入导出 (Persistence)
+    
+    /// 导出数据：生成 JSON 文件并调起系统分享面板
+    private func exportData() {
+        guard let data = appModel.exportData() else { return }
+        
+        let fileName = "chrona_data_" + Date.now.formatted(.dateTime.year().month().day())
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName).appendingPathExtension("json")
+        
+        do {
+            try data.write(to: fileURL)
+            let activityViewController = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            
+            // 在 iPad 上需要配置 popoverPresentationController 避免崩溃
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootViewController = windowScene.windows.first?.rootViewController {
+                
+                if let popover = activityViewController.popoverPresentationController {
+                    popover.sourceView = rootViewController.view
+                    popover.sourceRect = CGRect(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2, width: 0, height: 0)
+                    popover.permittedArrowDirections = []
+                }
+                
+                rootViewController.present(activityViewController, animated: true)
+            }
+        } catch {
+            print("Export failed: \(error)")
+        }
+    }
+    
+    /// 处理文件选择器的结果
+    private func handleImportResult(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            
+            // 重要：必须开启安全资源访问，否则读取 Data 时会权限拒绝
+            guard url.startAccessingSecurityScopedResource() else {
+                appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
+                return
+            }
+            
+            defer { url.stopAccessingSecurityScopedResource() }
+            
+            do {
+                let data = try Data(contentsOf: url)
+                self.importedData = data
+                // 读取成功后，显示二次确认弹窗
+                self.showImportConfirm = true
+            } catch {
+                print("Import read failed: \(error)")
+                appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
+            }
+            
+        case .failure(let error):
+            print("Import picker failed: \(error)")
+        }
+    }
+
+    /// 执行最终的导入操作
+    private func performImport() {
+        guard let data = importedData else { return }
+        
+        if appModel.importData(from: data) {
+            // 导入成功后，同步刷新 UI 草稿状态
+            draft = appModel.settings
+        } else {
+            appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
+        }
+        
+        // 清理临时状态
+        importedData = nil
     }
 }
 
