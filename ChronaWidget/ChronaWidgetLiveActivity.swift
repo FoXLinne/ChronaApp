@@ -122,7 +122,7 @@ private struct ExpandedBottomView: View {
             
             Spacer()
             
-            // 右下（原本是状态标签，现在放计时器）
+            // 右下：计时器（统一使用最大的 .largeTitle 字体）
             TimerDisplayView(state: state, font: .system(.largeTitle, design: .rounded).monospacedDigit().bold())
         }
         .padding(.horizontal, 16)
@@ -162,15 +162,18 @@ private struct TimerDisplayView: View {
         Group {
             if state.isPaused {
                 Text(state.pausedTimerText)
+                    .font(font)
             } else if state.isStopwatch {
                 Text(state.elapsedReferenceDate, style: .timer)
+                    .font(font)
             } else if let endTime = state.endTime {
                 Text(endTime, style: .timer)
+                    .font(font)
             } else {
                 Text("--:--")
+                    .font(font)
             }
         }
-        .font(font)
         .multilineTextAlignment(.trailing)
         .foregroundStyle(state.isPaused ? Color.secondary : Color("AccentColor"))
         .lineLimit(1)

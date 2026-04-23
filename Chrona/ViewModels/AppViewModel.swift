@@ -135,6 +135,12 @@ final class AppViewModel: ObservableObject {
         reindexTasks()
     }
 
+    /// 检查任务名是否冲突（排除当前正在编辑的任务 ID）
+    func isTaskNameDuplicate(_ title: String, excluding id: UUID?) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tasks.contains { $0.id != id && $0.title.lowercased() == trimmed.lowercased() }
+    }
+
     func deleteTasks(at offsets: IndexSet) {
         let ids = offsets.map { sortedTasks[$0].id }
         tasks.removeAll(where: { ids.contains($0.id) })

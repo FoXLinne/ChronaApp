@@ -354,8 +354,9 @@ struct SettingsView: View {
                let rootViewController = windowScene.windows.first?.rootViewController {
                 
                 if let popover = activityViewController.popoverPresentationController {
+                    let bounds = windowScene.screen.bounds
                     popover.sourceView = rootViewController.view
-                    popover.sourceRect = CGRect(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2, width: 0, height: 0)
+                    popover.sourceRect = CGRect(x: bounds.width / 2, y: bounds.height / 2, width: 0, height: 0)
                     popover.permittedArrowDirections = []
                 }
                 
