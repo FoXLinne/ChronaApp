@@ -213,8 +213,8 @@ struct SettingsView: View {
                 }
             }
 
-            // --- DEMO VERSION NOTICE (Can be removed in production) ---
-            ChronaDemoNotice()
+            // --- 演示版本声明（已注释，正式版移除）---
+            // ChronaDemoNotice()
             // ---------------------------------------------------------
         }
         .navigationTitle(String(localized: "profile.settings"))
