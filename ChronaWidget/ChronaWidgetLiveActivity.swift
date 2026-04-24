@@ -41,30 +41,30 @@ private struct LockScreenBannerView: View {
     let state: TimerActivityAttributes.ContentState
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             // 模式图标
             Image(systemName: state.modeSystemImage)
-                .font(.title2)
+                .font(.title)
                 .foregroundStyle(Color("AccentColor"))
-                .frame(width: 32)
+                .frame(width: 36)
 
             // 任务信息
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(state.taskTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline.weight(.semibold))
                     .lineLimit(1)
                 Text(state.modeLabel)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
             // 计时器 + 状态标签
-            VStack(alignment: .trailing, spacing: 3) {
-                TimerDisplayView(state: state, font: .system(.title2, design: .rounded).monospacedDigit().bold())
+            VStack(alignment: .trailing, spacing: 4) {
+                TimerDisplayView(state: state, font: .system(.title, design: .rounded).monospacedDigit().bold())
                 Text(state.phaseLabel)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
