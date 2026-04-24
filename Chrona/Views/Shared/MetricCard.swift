@@ -17,7 +17,7 @@ struct MetricCard: View {
                 if let subtitle {
                     Text(subtitle)
                 } else {
-                    Text(" ")
+                    Text(String(localized: "common.placeholder"))
                         .hidden()
                 }
             }

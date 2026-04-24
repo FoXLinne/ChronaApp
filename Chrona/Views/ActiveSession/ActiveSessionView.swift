@@ -292,14 +292,14 @@ struct ActiveSessionView: View {
             Text(currentTime.formatted(.dateTime.hour().minute()))
                 .font(.system(size: 11, weight: .regular, design: .rounded))
 
-            Text("·")
+            Text(String(localized: "common.separator"))
                 .font(.system(size: 11, weight: .thin))
 
             if batteryLevel >= 0 {
                 Image(systemName: batteryIcon(for: batteryLevel))
                     .font(.system(size: 9, weight: .light))
 
-                Text("\(Int(batteryLevel * 100))%")
+                Text(verbatim: "\(Int(batteryLevel * 100))%")
                     .font(.system(size: 11, weight: .regular, design: .rounded))
             }
         }

@@ -16,13 +16,15 @@ struct TaskListView: View {
     var body: some View {
         NavigationStack {
             List {
-                if editMode == .active {
-                    // 编辑模式：单一 Section，支持拖拽排序和左侧红点删除
+                if listTasks.isEmpty {
+                    Section {
+                        taskEmptyRow
+                    }
+                } else if editMode == .active {
+                    // 编辑模式：显示完整任务列表，保留系统删除/排序和同一套左滑操作。
                     Section {
                         ForEach(listTasks) { task in
-                            TaskRow(task: task, isEditing: true) {
-                                _ = appModel.startTask(task)
-                            }
+                            taskRow(task, isEditing: true)
                         }
                         .onDelete(perform: handleDelete)
                         .onMove(perform: handleMove)
@@ -31,40 +33,7 @@ struct TaskListView: View {
                     // 普通模式：每个任务是独立的 Section 卡片
                     ForEach(listTasks) { task in
                         Section {
-                            TaskRow(task: task) {
-                                _ = appModel.startTask(task)
-                            }
-                            .contextMenu {
-                                Button(String(localized: "common.edit")) {
-                                    guardTaskMutation {
-                                        editorRoute = .edit(task)
-                                    }
-                                }
-                                Button(String(localized: "task.start")) {
-                                    _ = appModel.startTask(task)
-                                }
-                                Button(String(localized: "common.delete"), role: .destructive) {
-                                    guardTaskMutation {
-                                        pendingDeletion = task
-                                    }
-                                }
-                            }
-                            .swipeActions(edge: .trailing) {
-                                if !isTaskMutationLocked {
-                                    Button(role: .destructive) {
-                                        pendingDeletion = task
-                                    } label: {
-                                        Label(String(localized: "common.delete"), systemImage: "trash")
-                                    }
-
-                                    Button {
-                                        editorRoute = .edit(task)
-                                    } label: {
-                                        Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
-                                    }
-                                    .tint(.accentColor)
-                                }
-                            }
+                            taskRow(task)
                         }
                     }
                 }
@@ -179,6 +148,75 @@ struct TaskListView: View {
         appModel.activeSession != nil
     }
 
+    private var taskEmptyRow: some View {
+        VStack(alignment: .center, spacing: 12) {
+            Spacer()
+            
+            Text(emptyTitle)
+                .font(.title3.bold())
+            
+            Text(emptyMessage)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal)
+    }
+
+    private func taskRow(_ task: TaskItem, isEditing: Bool = false) -> some View {
+        TaskRow(task: task, isEditing: isEditing) {
+            _ = appModel.startTask(task)
+        }
+        .contextMenu {
+            Button(String(localized: "common.edit")) {
+                guardTaskMutation {
+                    editorRoute = .edit(task)
+                }
+            }
+            if !isEditing {
+                Button(String(localized: "task.start")) {
+                    _ = appModel.startTask(task)
+                }
+            }
+            Button(String(localized: "common.delete"), role: .destructive) {
+                guardTaskMutation {
+                    pendingDeletion = task
+                }
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            if !isTaskMutationLocked {
+                Button(role: .destructive) {
+                    pendingDeletion = task
+                } label: {
+                    Label(String(localized: "common.delete"), systemImage: "trash")
+                }
+
+                Button {
+                    editorRoute = .edit(task)
+                } label: {
+                    Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
+                }
+                .tint(.accentColor)
+            }
+        }
+    }
+
+    private var emptyTitle: String {
+        appModel.sortedTasks.isEmpty
+            ? String(localized: "task.empty.title")
+            : String(localized: "task.noMatches.title")
+    }
+
+    private var emptyMessage: String {
+        appModel.sortedTasks.isEmpty
+            ? String(localized: "task.empty.message")
+            : String(localized: "task.noMatches.message")
+    }
+
     // 编辑模式下显示完整任务列表，避免过滤导致索引错位崩溃
     private var listTasks: [TaskItem] {
         editMode == .active ? appModel.sortedTasks : displayTasks
@@ -201,10 +239,7 @@ struct TaskListView: View {
 
     private func handleDelete(_ offsets: IndexSet) {
         guardTaskMutation {
-            for index in offsets {
-                guard listTasks.indices.contains(index) else { continue }
-                appModel.deleteTask(id: listTasks[index].id)
-            }
+            appModel.deleteTasks(at: offsets)
         }
     }
 
@@ -320,7 +355,7 @@ private struct TaskRow: View {
                     }
                     .buttonStyle(.glass(.regular.tint(controlTint)))
                     if completedCount > 0 {
-                        Text("\(completedCount)")
+                        Text(verbatim: "\(completedCount)")
                             .font(.caption2.bold())
                             .padding(6)
                             .background(.thinMaterial, in: Circle())

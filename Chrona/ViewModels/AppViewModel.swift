@@ -70,8 +70,10 @@ final class AppViewModel: ObservableObject {
 
         startTicker()
         if !isPreviewMode {
+            notifications.setup()
             wirePersistenceAndSideEffects()
             syncReminder()
+            syncCountdownReminders()
         }
         refreshDerivedState()
         reconcileActiveSessionIfNeeded()
@@ -179,19 +181,30 @@ final class AppViewModel: ObservableObject {
         tasks = reordered
     }
 
-    func addCountdownEvent(title: String, date: Date) {
-        countdownEvents.append(CountdownEvent(title: title, date: date))
+    func addCountdownEvent(title: String, date: Date, includesTime: Bool = false, notificationEnabled: Bool = false) {
+        let event = CountdownEvent(
+            title: title,
+            date: normalizedCountdownDate(date, includesTime: includesTime),
+            includesTime: includesTime,
+            notificationEnabled: notificationEnabled
+        )
+        countdownEvents.append(event)
         countdownEvents.sort(by: { $0.date < $1.date })
+        syncCountdownReminder(for: event)
     }
 
     func updateCountdownEvent(_ event: CountdownEvent) {
         guard let index = countdownEvents.firstIndex(where: { $0.id == event.id }) else { return }
-        countdownEvents[index] = event
+        var copy = event
+        copy.date = normalizedCountdownDate(copy.date, includesTime: copy.includesTime)
+        countdownEvents[index] = copy
         countdownEvents.sort(by: { $0.date < $1.date })
+        syncCountdownReminder(for: copy)
     }
 
     func deleteCountdownEvent(id: UUID) {
         countdownEvents.removeAll(where: { $0.id == id })
+        notifications.cancelCountdownReminder(eventID: id)
     }
 
     func deleteCountdownEvents(at offsets: IndexSet, from future: Bool) {
@@ -412,11 +425,15 @@ final class AppViewModel: ObservableObject {
     }
 
     var futureEvents: [CountdownEvent] {
-        countdownEvents.filter { $0.date >= Calendar.current.startOfDay(for: .now) }
+        countdownEvents.filter { $0.date >= Calendar.current.startOfDay(for: .now) && !Calendar.current.isDateInToday($0.date) }
+    }
+
+    var todayEvents: [CountdownEvent] {
+        countdownEvents.filter { Calendar.current.isDateInToday($0.date) }
     }
 
     var pastEvents: [CountdownEvent] {
-        countdownEvents.filter { $0.date < Calendar.current.startOfDay(for: .now) }.sorted(by: { $0.date > $1.date })
+        countdownEvents.filter { $0.date < Calendar.current.startOfDay(for: .now) && !Calendar.current.isDateInToday($0.date) }.sorted(by: { $0.date > $1.date })
     }
 
     func taskDistribution(range: TimeRange) -> [TaskDistributionEntry] {
@@ -931,6 +948,39 @@ final class AppViewModel: ObservableObject {
     /// 今天是否已有合格的专注记录（≥5s，recordSession 才会写入）
     private func hasFocusedToday() -> Bool {
         sessions.contains { Calendar.current.isDateInToday($0.endedAt) }
+    }
+
+    private func syncCountdownReminders() {
+        let events = countdownEvents
+        notifications.cancelAllCountdownReminders { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                events.forEach(self.syncCountdownReminder)
+            }
+        }
+    }
+
+    private func syncCountdownReminder(for event: CountdownEvent) {
+        guard !isPreviewMode else { return }
+        guard event.notificationEnabled else {
+            notifications.cancelCountdownReminder(eventID: event.id)
+            return
+        }
+
+        let reminderDate = normalizedCountdownDate(event.date, includesTime: event.includesTime)
+        guard reminderDate > Date.now else {
+            notifications.cancelCountdownReminder(eventID: event.id)
+            return
+        }
+        notifications.scheduleCountdownReminderIfAuthorized(
+            eventID: event.id,
+            title: event.title,
+            date: reminderDate
+        )
+    }
+
+    private func normalizedCountdownDate(_ date: Date, includesTime: Bool) -> Date {
+        includesTime ? date : Calendar.current.startOfDay(for: date)
     }
 
     private func showNotice(_ message: String) {

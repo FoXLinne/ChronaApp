@@ -169,7 +169,14 @@ struct SettingsView: View {
             }
 
             Section(String(localized: "settings.category.notification")) {
-                Toggle(String(localized: "settings.dailyReminder"), isOn: $draft.dailyReminderEnabled)
+                Toggle(isOn: $draft.dailyReminderEnabled) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(String(localized: "settings.dailyReminder"))
+                        Text(String(localized: "settings.dailyReminder.subtitle"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if draft.dailyReminderEnabled {
                     DatePicker(
                         String(localized: "settings.reminderTime"),

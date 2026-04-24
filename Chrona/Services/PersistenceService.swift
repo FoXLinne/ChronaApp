@@ -344,6 +344,9 @@ private extension PersistenceService {
             }
             seenIDs.insert(copy.id)
             copy.title = title
+            if !copy.includesTime {
+                copy.date = Calendar.current.startOfDay(for: copy.date)
+            }
             return copy
         }
         .sorted(by: { $0.date < $1.date })

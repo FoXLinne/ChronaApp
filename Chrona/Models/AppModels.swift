@@ -111,11 +111,31 @@ struct CountdownEvent: Identifiable, Codable, Equatable {
     var id: UUID
     var title: String
     var date: Date
+    var includesTime: Bool
+    var notificationEnabled: Bool
 
-    init(id: UUID = UUID(), title: String, date: Date) {
+    init(
+        id: UUID = UUID(),
+        title: String,
+        date: Date,
+        includesTime: Bool = false,
+        notificationEnabled: Bool = false
+    ) {
         self.id = id
         self.title = title
         self.date = date
+        self.includesTime = includesTime
+        self.notificationEnabled = notificationEnabled
+    }
+
+    /// 兼容旧版倒数日数据：旧文件没有时间/提醒开关时默认关闭。
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decode(String.self, forKey: .title)
+        date = try container.decode(Date.self, forKey: .date)
+        includesTime = try container.decodeIfPresent(Bool.self, forKey: .includesTime) ?? false
+        notificationEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationEnabled) ?? false
     }
 }
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct CountdownView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
+    @State private var editMode: EditMode = .inactive
     @State private var editorRoute: CountdownEditorRoute?
     @State private var pendingDeletion: CountdownEvent?
     @State private var searchText = ""
@@ -11,6 +12,15 @@ struct CountdownView: View {
     var body: some View {
         NavigationStack {
             List {
+                if selectedScopes.contains(.today), !filteredTodayEvents.isEmpty {
+                    Section {
+                        ForEach(filteredTodayEvents) { event in
+                            eventRow(event, future: true)
+                        }
+                        .onDelete(perform: handleDeleteToday)
+                    }
+                }
+
                 if selectedScopes.contains(.future), !filteredFutureEvents.isEmpty {
                     Section(String(localized: "countdown.future")) {
                         ForEach(filteredFutureEvents) { event in
@@ -29,14 +39,13 @@ struct CountdownView: View {
                     }
                 }
 
-                if filteredFutureEvents.isEmpty && filteredPastEvents.isEmpty {
+                if filteredTodayEvents.isEmpty && filteredFutureEvents.isEmpty && filteredPastEvents.isEmpty {
                     Section {
-                        Text(String(localized: "countdown.empty"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        countdownEmptyRow
                     }
                 }
             }
+            .environment(\.editMode, $editMode)
             .navigationTitle(String(localized: "tab.countdown"))
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
             .background {
@@ -51,29 +60,60 @@ struct CountdownView: View {
             )
             .searchToolbarBehavior(.minimize)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Menu {
-                        ForEach(CountdownScope.allCases) { scope in
-                            Toggle(isOn: binding(for: scope)) {
-                                Text(scopeTitle(scope))
+                if editMode == .active {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation {
+                                editMode = .inactive
                             }
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.white)
                         }
-                    } label: {
-                        Label(String(localized: "countdown.filter"), systemImage: "line.3.horizontal.decrease.circle")
+                        .buttonStyle(.borderedProminent)
                     }
+                } else {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                withAnimation {
+                                    editMode = .active
+                                }
+                            } label: {
+                                Label(String(localized: "common.edit"), systemImage: "pencil")
+                            }
 
-                    Button {
-                        editorRoute = .add()
-                    } label: {
-                        Image(systemName: "plus")
+                            Menu {
+                                ForEach(CountdownScope.allCases) { scope in
+                                    Toggle(isOn: binding(for: scope)) {
+                                        Text(scopeTitle(scope))
+                                    }
+                                }
+                            } label: {
+                                Label(String(localized: "countdown.filter"), systemImage: "line.3.horizontal.decrease.circle")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                        }
+
+                        Button {
+                            editorRoute = .add()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel(String(localized: "countdown.add"))
                     }
-                    .accessibilityLabel(String(localized: "countdown.add"))
                 }
             }
             .sheet(item: $editorRoute) { route in
                 CountdownEditorView(event: route.event) { updated in
                     if route.event == nil {
-                        appModel.addCountdownEvent(title: updated.title, date: updated.date)
+                        appModel.addCountdownEvent(
+                            title: updated.title,
+                            date: updated.date,
+                            includesTime: updated.includesTime,
+                            notificationEnabled: updated.notificationEnabled
+                        )
                     } else {
                         appModel.updateCountdownEvent(updated)
                     }
@@ -118,6 +158,40 @@ struct CountdownView: View {
             }
     }
 
+    private var countdownEmptyRow: some View {
+        VStack(alignment: .center, spacing: 12) {
+            Spacer()
+            
+            Text(emptyTitle)
+                .font(.title3.bold())
+            
+            Text(emptyMessage)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal)
+    }
+
+    private var emptyTitle: String {
+        appModel.countdownEvents.isEmpty
+            ? String(localized: "countdown.empty.title")
+            : String(localized: "countdown.noMatches.title")
+    }
+
+    private var emptyMessage: String {
+        appModel.countdownEvents.isEmpty
+            ? String(localized: "countdown.empty.message")
+            : String(localized: "countdown.noMatches.message")
+    }
+
+    private var filteredTodayEvents: [CountdownEvent] {
+        filteredEvents(for: .today)
+    }
+
     private var filteredFutureEvents: [CountdownEvent] {
         filteredEvents(for: .future)
     }
@@ -127,24 +201,33 @@ struct CountdownView: View {
     }
 
     private func filteredEvents(for scope: CountdownScope) -> [CountdownEvent] {
-        let base = scope == .future ? appModel.futureEvents : appModel.pastEvents
+        let base: [CountdownEvent]
+        switch scope {
+        case .today: base = appModel.todayEvents
+        case .future: base = appModel.futureEvents
+        case .past: base = appModel.pastEvents
+        }
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !keyword.isEmpty else { return base }
         return base.filter { $0.title.lowercased().contains(keyword) }
     }
 
+    private func handleDeleteToday(_ offsets: IndexSet) {
+        deleteEvents(at: offsets, from: filteredTodayEvents)
+    }
+
     private func handleDeleteFuture(_ offsets: IndexSet) {
-        let ids = offsets.compactMap { index in
-            filteredFutureEvents.indices.contains(index) ? filteredFutureEvents[index].id : nil
-        }
-        ids.forEach(appModel.deleteCountdownEvent(id:))
+        deleteEvents(at: offsets, from: filteredFutureEvents)
     }
 
     private func handleDeletePast(_ offsets: IndexSet) {
-        let ids = offsets.compactMap { index in
-            filteredPastEvents.indices.contains(index) ? filteredPastEvents[index].id : nil
+        deleteEvents(at: offsets, from: filteredPastEvents)
+    }
+
+    private func deleteEvents(at offsets: IndexSet, from events: [CountdownEvent]) {
+        for index in offsets {
+            appModel.deleteCountdownEvent(id: events[index].id)
         }
-        ids.forEach(appModel.deleteCountdownEvent(id:))
     }
 
     private func binding(for scope: CountdownScope) -> Binding<Bool> {
@@ -161,6 +244,8 @@ struct CountdownView: View {
 
     private func scopeTitle(_ scope: CountdownScope) -> String {
         switch scope {
+        case .today:
+            return String(localized: "countdown.today")
         case .future:
             return String(localized: "countdown.future")
         case .past:
@@ -170,6 +255,7 @@ struct CountdownView: View {
 }
 
 private enum CountdownScope: String, CaseIterable, Identifiable {
+    case today
     case future
     case past
 
@@ -208,6 +294,8 @@ private struct CountdownEditorView: View {
 
     @State private var title: String
     @State private var date: Date
+    @State private var includesTime: Bool
+    @State private var notificationEnabled: Bool
 
     let event: CountdownEvent?
     let onSave: (CountdownEvent) -> Void
@@ -217,13 +305,24 @@ private struct CountdownEditorView: View {
         self.onSave = onSave
         _title = State(initialValue: event?.title ?? "")
         _date = State(initialValue: event?.date ?? .now)
+        _includesTime = State(initialValue: event?.includesTime ?? false)
+        _notificationEnabled = State(initialValue: event?.notificationEnabled ?? false)
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField(String(localized: "countdown.name"), text: $title)
-                DatePicker(String(localized: "countdown.date"), selection: $date, displayedComponents: [.date])
+
+                DatePicker(
+                    String(localized: includesTime ? "countdown.dateTime" : "countdown.date"),
+                    selection: $date,
+                    displayedComponents: includesTime ? [.date, .hourAndMinute] : [.date]
+                )
+
+                Toggle(String(localized: "countdown.showTime"), isOn: $includesTime)
+                
+                Toggle(String(localized: "countdown.notification"), isOn: $notificationEnabled)
             }
             .navigationTitle(event == nil ? String(localized: "countdown.add") : String(localized: "countdown.edit"))
             .navigationBarTitleDisplayMode(.inline)
@@ -255,6 +354,8 @@ private struct CountdownEditorView: View {
         var output = event ?? CountdownEvent(title: title, date: date)
         output.title = title
         output.date = date
+        output.includesTime = includesTime
+        output.notificationEnabled = notificationEnabled
         onSave(output)
         dismiss()
     }
@@ -269,7 +370,7 @@ private struct CountdownRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title)
                     .font(.headline)
-                Text(event.date.formatted(date: .abbreviated, time: .omitted))
+                Text(dateText)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -281,38 +382,90 @@ private struct CountdownRow: View {
 
     private var dayDelta: Int {
         let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: .now), to: Calendar.current.startOfDay(for: event.date)).day ?? 0
-        if future {
+        if dayState == .future {
             return max(days, 0)
         }
         return abs(days)
     }
 
-    private var prefixText: String {
-        future
-            ? String(localized: "countdown.inDays.prefix")
-            : String(localized: "countdown.pastDays.prefix")
+    private var dayState: CountdownDayState {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(event.date) {
+            return .today
+        }
+        return future ? .future : .past
     }
 
-    private var suffixText: String {
-        String(localized: "countdown.days.suffix")
+    private var dateText: String {
+        event.date.formatted(
+            date: .abbreviated,
+            time: event.includesTime ? .shortened : .omitted
+        )
+    }
+
+    private var dayTemplate: String {
+        switch dayState {
+        case .future:
+            String(localized: "countdown.days.future.value")
+        case .past:
+            String(localized: "countdown.days.past.value")
+        case .today:
+            "" // 不使用模板
+        }
     }
 
     private var dayLabel: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(prefixText)
-                .font(.footnote.weight(.semibold))
-
-            Text("\(dayDelta)")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Text(suffixText)
-                .font(.footnote.weight(.semibold))
+        if dayState == .today {
+            return AnyView(
+                Text(String(localized: "countdown.days.today.value"))
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .foregroundStyle(.tint)
+            )
         }
-        .foregroundStyle(future ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+
+        let parts = localizedTemplateParts(dayTemplate)
+
+        return AnyView(
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if !parts.prefix.isEmpty {
+                    Text(parts.prefix)
+                        .font(.footnote.weight(.semibold))
+                }
+
+                Text(verbatim: "\(dayDelta)")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                if !parts.suffix.isEmpty {
+                    Text(parts.suffix)
+                        .font(.footnote.weight(.semibold))
+                }
+            }
+            .foregroundStyle(dayState == .future ? AnyShapeStyle(.blue) : AnyShapeStyle(.secondary))
+        )
     }
+
+    // The localized template controls word order while the number keeps its display styling.
+    private func localizedTemplateParts(_ template: String) -> (prefix: String, suffix: String) {
+        let parts = template.components(separatedBy: "{count}")
+        guard parts.count == 2 else {
+            return ("", template)
+        }
+        return (
+            parts[0].trimmingCharacters(in: .whitespacesAndNewlines),
+            parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+}
+
+private enum CountdownDayState {
+    case future
+    case today
+    case past
 }
 
 #Preview {

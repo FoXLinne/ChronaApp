@@ -87,14 +87,12 @@ struct StatisticsView: View {
     }
 
     private func countValueView(_ count: Int) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 2) {
-            Text("\(count)")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .monospacedDigit()
-            Text("次")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
+        localizedNumberTemplate(
+            String(localized: "stats.count.value"),
+            number: count,
+            numberFont: .system(size: 24, weight: .bold, design: .rounded),
+            textFont: .caption
+        )
     }
 
     private func statsDurationRow(title: String, duration: TimeInterval) -> some View {
@@ -124,13 +122,50 @@ struct StatisticsView: View {
 
     private func durationPart(value: Int, unitText: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 2) {
-            Text("\(value)")
+            Text(verbatim: "\(value)")
                 .font(.system(size: 24, weight: .bold, design: .rounded))
                 .monospacedDigit()
             Text(unitText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // Keeps compact numeric values localizable without losing the large-number styling.
+    private func localizedNumberTemplate(
+        _ template: String,
+        number: Int,
+        numberFont: Font,
+        textFont: Font
+    ) -> some View {
+        let parts = localizedTemplateParts(template)
+
+        return HStack(alignment: .firstTextBaseline, spacing: 2) {
+            if !parts.prefix.isEmpty {
+                Text(parts.prefix)
+                    .font(textFont)
+                    .foregroundStyle(.secondary)
+            }
+            Text(verbatim: "\(number)")
+                .font(numberFont)
+                .monospacedDigit()
+            if !parts.suffix.isEmpty {
+                Text(parts.suffix)
+                    .font(textFont)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func localizedTemplateParts(_ template: String) -> (prefix: String, suffix: String) {
+        let parts = template.components(separatedBy: "{count}")
+        guard parts.count == 2 else {
+            return ("", template)
+        }
+        return (
+            parts[0].trimmingCharacters(in: .whitespacesAndNewlines),
+            parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 
     private var distributionSection: some View {
