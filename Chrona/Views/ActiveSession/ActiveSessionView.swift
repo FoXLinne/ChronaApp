@@ -8,6 +8,7 @@ struct ActiveSessionView: View {
     @State private var autoHideTask: Task<Void, Never>?
     @State private var hasPlayedInitialImmersiveTransition = false
     @State private var disableClockAnimation = false
+    @State private var showSettings = false
 
     private var isImmersive: Bool {
         appModel.shouldShowMinimalMode && !revealControls
@@ -159,8 +160,8 @@ struct ActiveSessionView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !isImmersive {
-                    NavigationLink {
-                        SettingsView()
+                    Button {
+                        showSettings = true
                     } label: {
                         Image(systemName: "gear")
                     }
@@ -168,6 +169,16 @@ struct ActiveSessionView: View {
                 }
             }
         }.toolbar(isImmersive ? .hidden : .visible, for: .navigationBar)
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+            }
+        }
+        .onChange(of: appModel.selectedTab) { _, newTab in
+            if newTab != .active {
+                showSettings = false
+            }
+        }
         .onChange(of: appModel.shouldShowMinimalMode) { _, enabled in
             if enabled {
                 if hasPlayedInitialImmersiveTransition {
