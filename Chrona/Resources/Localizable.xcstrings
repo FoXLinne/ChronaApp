@@ -3952,13 +3952,41 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "锁屏与灵动岛设置（未开发功能）"
+            "value" : "锁屏与灵动岛"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "鎖屏與靈動島設置（未開發功能）"
+            "value" : "鎖屏與靈動島"
+          }
+        }
+      }
+    },
+    "settings.liveActivities.subtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show timer on the lock screen and Dynamic Island"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ロック画面とダイナミックアイランドにタイマーを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在锁屏和灵动岛上显示计时状态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在鎖屏與靈動島上顯示計時狀態"
           }
         }
       }

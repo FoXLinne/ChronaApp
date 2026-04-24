@@ -167,7 +167,14 @@ struct SettingsView: View {
                         displayedComponents: .hourAndMinute
                     )
                 }
-                Toggle(String(localized: "settings.liveActivities"), isOn: $draft.liveActivitiesEnabled)
+                Toggle(isOn: $draft.liveActivitiesEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "settings.liveActivities"))
+                        Text(String(localized: "settings.liveActivities.subtitle"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Section {

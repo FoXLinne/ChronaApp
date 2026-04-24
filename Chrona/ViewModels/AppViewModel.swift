@@ -833,6 +833,13 @@ final class AppViewModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] _ in self?.syncReminder() }
             .store(in: &cancellables)
+
+        // Live Activity 同步：开关变更时立即启停灵动岛/锁屏实时活动
+        $settings
+            .dropFirst()
+            .removeDuplicates { $0.liveActivitiesEnabled == $1.liveActivitiesEnabled }
+            .sink { [weak self] _ in self?.syncLiveActivity() }
+            .store(in: &cancellables)
     }
 
     private func persistState() {
