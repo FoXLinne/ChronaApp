@@ -25,73 +25,54 @@ struct SettingsView: View {
                 NavigationLink {
                     StrictModeSettingsView(draft: $draft)
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.strictMode"))  // 严格模式
-                        Text(String(localized: "settings.strictMode.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.strictMode"),
+                        subtitle: String(localized: "settings.strictMode.subtitle")
+                    )
                 }
 
                 Toggle(isOn: pauseLimitEnabledBinding) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.enablePauseLimit"))  // 暂停时间限制
-                        Text(String(localized: "settings.enablePauseLimit.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.enablePauseLimit"),
+                        subtitle: String(localized: "settings.enablePauseLimit.subtitle")
+                    )
                 }
 
                 if draft.stopwatchPauseLimitMinutes != nil {
                     HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "settings.pauseLimit"))
-                            Text(String(localized: "settings.pauseLimit.subtitle"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        SettingRowLabel(
+                            title: String(localized: "settings.pauseLimit"),
+                            subtitle: String(localized: "settings.pauseLimit.subtitle")
+                        )
                         Spacer()
-                        HStack(spacing: 4) {
-                            TextField("1-30", value: pauseLimitMinutesBinding, format: .number)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .lineLimit(1)
-                                .frame(width: 56)
-                                .foregroundStyle(.secondary)
-                            Text(String(localized: "settings.minutesUnit"))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("\(draft.stopwatchPauseLimitMinutes ?? 15)\(String(localized: "settings.minutesUnit"))")
+                            .foregroundStyle(.secondary)
+                        Stepper("", value: Binding(
+                            get: { draft.stopwatchPauseLimitMinutes ?? 15 },
+                            set: { draft.stopwatchPauseLimitMinutes = $0 }
+                        ), in: 1...30)
+                        .labelsHidden()
                     }
                 }
 
                 Toggle(isOn: restAfterTaskBinding) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.restAfterTask"))  // 任务完成后休息
-                        Text(String(localized: "settings.restAfterTask.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.restAfterTask"),
+                        subtitle: String(localized: "settings.restAfterTask.subtitle")
+                    )
                 }
 
                 if draft.restDurationMinutes > 0 {
                     HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "settings.restTime"))  // 休息时间
-                            Text(String(localized: "settings.restTime.subtitle"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        SettingRowLabel(
+                            title: String(localized: "settings.restTime"),
+                            subtitle: String(localized: "settings.restTime.subtitle")
+                        )
                         Spacer()
-                        HStack(spacing: 4) {
-                            TextField("1-30", value: restDurationMinutesBinding, format: .number)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .lineLimit(1)
-                                .frame(width: 56)
-                                .foregroundStyle(.secondary)
-                            Text(String(localized: "settings.minutesUnit"))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("\(draft.restDurationMinutes)\(String(localized: "settings.minutesUnit"))")
+                            .foregroundStyle(.secondary)
+                        Stepper("", value: $draft.restDurationMinutes, in: 1...30)
+                            .labelsHidden()
                     }
                 }
             } header: {
@@ -99,45 +80,19 @@ struct SettingsView: View {
             } footer: {
                 if isRuntimeLocked {
                     Text(String(localized: "settings.runtime.locked"))  
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
             .disabled(isRuntimeLocked)
 
             Section(String(localized: "settings.category.appearance")) {
 
-                Toggle(isOn: $draft.enableMinimalBlackMode) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.immersive"))
-                        Text(immersiveSubtitle)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if draft.enableMinimalBlackMode {
-                    Picker(selection: $draft.minimalModeActivationDelaySeconds) {
-                        Text(String(localized: "settings.minimalDelay.5s")).tag(5)
-                            .foregroundStyle(.secondary)
-                        Text(String(localized: "settings.minimalDelay.10s")).tag(10)
-                            .foregroundStyle(.secondary)
-                        Text(String(localized: "settings.minimalDelay.30s")).tag(30)
-                            .foregroundStyle(.secondary)
-                        Text(String(localized: "settings.minimalDelay.60s")).tag(60)
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Text(String(localized: "settings.minimalDelay"))
-                    }
-                }
-
-                Toggle(isOn: $draft.keepScreenAwake) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.keepAwake"))
-                        Text(String(localized: "settings.keepAwake.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                NavigationLink {
+                    TimerDisplaySettingsView(draft: $draft)
+                } label: {
+                    SettingRowLabel(
+                        title: String(localized: "settings.timerDisplay"),
+                        subtitle: String(localized: "settings.timerDisplay.subtitle")
+                    )
                 }
 
                 Toggle(isOn: fixedSortBinding) {
@@ -154,13 +109,6 @@ struct SettingsView: View {
                     )
                 }
 
-                Toggle(isOn: $draft.showStatusBarOverlay) {
-                    SettingRowLabel(
-                        title: String(localized: "settings.showStatusBarOverlay"),
-                        subtitle: String(localized: "settings.showStatusBarOverlay.subtitle")
-                    )
-                }
-
                 Picker(String(localized: "settings.theme"), selection: $draft.theme) {
                     Text(String(localized: "theme.system")).tag(AppTheme.system)
                     Text(String(localized: "theme.light")).tag(AppTheme.light)
@@ -170,12 +118,10 @@ struct SettingsView: View {
 
             Section(String(localized: "settings.category.notification")) {
                 Toggle(isOn: $draft.dailyReminderEnabled) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(String(localized: "settings.dailyReminder"))
-                        Text(String(localized: "settings.dailyReminder.subtitle"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.dailyReminder"),
+                        subtitle: String(localized: "settings.dailyReminder.subtitle")
+                    )
                 }
                 if draft.dailyReminderEnabled {
                     DatePicker(
@@ -185,12 +131,10 @@ struct SettingsView: View {
                     )
                 }
                 Toggle(isOn: $draft.liveActivitiesEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.liveActivities"))
-                        Text(String(localized: "settings.liveActivities.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.liveActivities"),
+                        subtitle: String(localized: "settings.liveActivities.subtitle")
+                    )
                 }
             }
 
@@ -304,13 +248,6 @@ struct SettingsView: View {
         }
     }
 
-    private var immersiveSubtitle: String {
-        if draft.enableMinimalBlackMode {
-            return String(format: String(localized: "settings.immersive.subtitle.on"), draft.minimalModeActivationDelaySeconds)
-        }
-        return String(localized: "settings.immersive.subtitle.off")
-    }
-
     private var fixedSortBinding: Binding<Bool> {
         Binding {
             !draft.autoMoveCompletedTaskToTop
@@ -333,14 +270,6 @@ struct SettingsView: View {
         }
     }
 
-    private var pauseLimitMinutesBinding: Binding<Int> {
-        Binding {
-            min(max(draft.stopwatchPauseLimitMinutes ?? 15, 1), 30)
-        } set: { minutes in
-            draft.stopwatchPauseLimitMinutes = min(max(minutes, 1), 30)
-        }
-    }
-
     private var restAfterTaskBinding: Binding<Bool> {
         Binding {
             draft.restDurationMinutes > 0
@@ -352,14 +281,6 @@ struct SettingsView: View {
             } else {
                 draft.restDurationMinutes = 0
             }
-        }
-    }
-
-    private var restDurationMinutesBinding: Binding<Int> {
-        Binding {
-            min(max(draft.restDurationMinutes, 1), 30)
-        } set: { minutes in
-            draft.restDurationMinutes = min(max(minutes, 1), 30)
         }
     }
 
@@ -498,7 +419,7 @@ private struct StrictModeSettingsView: View {
     }
 }
 
-private struct SettingRowLabel: View {
+struct SettingRowLabel: View {
     let title: String
     let subtitle: String?
 
@@ -507,7 +428,7 @@ private struct SettingRowLabel: View {
             Text(title)
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

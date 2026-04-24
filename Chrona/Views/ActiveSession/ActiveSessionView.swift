@@ -10,21 +10,37 @@ struct ActiveSessionView: View {
     @State private var hasPlayedInitialImmersiveTransition = false
     @State private var disableClockAnimation = false
     @State private var showSettings = false
+    @State private var timerDisplayDraft = AppSettings.default
     @State private var currentTime = Date.now
     @State private var batteryLevel: Float = -1
     @State private var isLandscapeForOverlay = false
     @State private var burnInOffset = CGSize.zero
+    @Environment(\.colorScheme) private var colorScheme
 
     private var isImmersive: Bool {
         appModel.shouldShowMinimalMode && !revealControls
     }
 
+    private var primaryForeground: Color {
+        if isImmersive { return .white }
+        return appModel.settings.showPersonalizedBackground ? .white : .primary
+    }
+
+    private var secondaryForeground: Color {
+        if isImmersive { return .white.opacity(0.75) }
+        return appModel.settings.showPersonalizedBackground ? .white.opacity(0.75) : .secondary
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let isLandscape = geometry.size.width > geometry.size.height
-            
+
             ZStack {
-                AppBackground(seed: appModel.activeTask?.backgroundName ?? "sunset")
+                if appModel.settings.showPersonalizedBackground {
+                    AppBackground(seed: appModel.activeTask?.backgroundName ?? "sunset")
+                } else {
+                    AppBackgroundLite()
+                }
                 Color.black
                     .ignoresSafeArea()
                     .opacity(isImmersive ? 1 : 0)
@@ -70,7 +86,7 @@ struct ActiveSessionView: View {
                                 if isImmersive {
                                     Text(String(localized: "session.tapHint"))
                                         .font(.footnote)
-                                        .foregroundStyle(.white.opacity(0.75))
+                                        .foregroundStyle(secondaryForeground)
                                 }
                             }
 
@@ -92,7 +108,7 @@ struct ActiveSessionView: View {
                         // 问题1：横屏垂直方向 padding 缩小，避免高度不够
                         .padding(.horizontal, 24)
                         .padding(.vertical, isLandscape ? 12 : 24)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryForeground)
                         .animation(.smooth, value: revealControls)
                         .animation(.smooth, value: isImmersive)
                         .transition(.opacity.combined(with: .scale(scale: 1.05)))
@@ -133,11 +149,11 @@ struct ActiveSessionView: View {
                             if isImmersive {
                                 Text(String(localized: "session.tapHint"))
                                     .font(.footnote)
-                                    .foregroundStyle(.white.opacity(0.75))
+                                    .foregroundStyle(secondaryForeground)
                             }
                         }
                         .padding(24)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryForeground)
                         .animation(.smooth, value: revealControls)
                         .animation(.smooth, value: isImmersive)
                         .transition(.opacity.combined(with: .scale(scale: 1.05)))
@@ -170,6 +186,7 @@ struct ActiveSessionView: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !isImmersive {
                     Button {
+                        timerDisplayDraft = appModel.settings
                         showSettings = true
                     } label: {
                         Image(systemName: "gear")
@@ -180,13 +197,25 @@ struct ActiveSessionView: View {
         }.toolbar(isImmersive ? .hidden : .visible, for: .navigationBar)
         .sheet(isPresented: $showSettings) {
             NavigationStack {
-                SettingsView()
+                TimerDisplaySettingsView(draft: $timerDisplayDraft)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button {
+                                showSettings = false
+                            } label: {
+                                Image(systemName: "xmark")
+                            }
+                        }
+                    }
             }
         }
         .onChange(of: appModel.selectedTab) { _, newTab in
             if newTab != .active {
                 showSettings = false
             }
+        }
+        .onChange(of: timerDisplayDraft) { _, newDraft in
+            appModel.settings = newDraft
         }
         .onChange(of: appModel.shouldShowMinimalMode) { _, enabled in
             if enabled {
@@ -322,25 +351,25 @@ struct ActiveSessionView: View {
             HStack(spacing: 24) {
                 Image(systemName: "timer.circle.fill")
                     .font(.system(size: 72))
-                    .foregroundStyle(.white.opacity(0.9))
-                
+                    .foregroundStyle(appModel.settings.showPersonalizedBackground || colorScheme == .dark ? .white : Color.accentColor)
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text(String(localized: "session.noTask"))
                         .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryForeground)
                     Text(String(localized: "session.noTask.subtitle"))
                         .multilineTextAlignment(.leading)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.75))
-                    
+                        .foregroundStyle(secondaryForeground)
+
                     if appModel.quickLaunchTaskID != nil {
                         if let lastTask = appModel.quickLaunchTask {
                             Text(String(format: String(localized: "session.lastTask"), lastTask.title))
-                                .foregroundStyle(.white.opacity(0.75))
+                                .foregroundStyle(secondaryForeground)
                                 .font(.footnote)
                         }
                     }
-                    
+
                     HStack(spacing: 12) {
                         if appModel.quickLaunchTaskID != nil {
                             Button(String(localized: "session.quickStart")) {
@@ -351,7 +380,7 @@ struct ActiveSessionView: View {
                             .buttonStyle(.glass(.regular.tint(.accentColor)))
                             .foregroundStyle(.white)
                         }
-                        
+
                         Button(String(localized: "session.goTasks")) {
                             appModel.openTasksTab()
                         }
@@ -367,18 +396,18 @@ struct ActiveSessionView: View {
             VStack(spacing: 18) {
                 Image(systemName: "timer.circle.fill")
                     .font(.system(size: 96))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(appModel.settings.showPersonalizedBackground || colorScheme == .dark ? .white : Color.accentColor)
                 Text(String(localized: "session.noTask"))
                     .font(.system(size: 42, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(primaryForeground)
                 Text(String(localized: "session.noTask.subtitle"))
                     .multilineTextAlignment(.center)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(secondaryForeground)
                 if appModel.quickLaunchTaskID != nil {
                     if let lastTask = appModel.quickLaunchTask {
                         Text(String(format: String(localized: "session.lastTask"), lastTask.title))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(secondaryForeground)
                             .font(.footnote)
                             .padding(12)
                     }
@@ -411,7 +440,7 @@ struct ActiveSessionView: View {
                 .tint(.white)
         } else {
             Text(String(localized: "session.elapsed"))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(secondaryForeground)
         }
     }
 
@@ -424,10 +453,10 @@ struct ActiveSessionView: View {
                 Text(String(format: String(localized: "session.pause.remaining"), appModel.formattedDuration(remaining)))
                     .font(.footnote)
             }
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(secondaryForeground)
         } else {
             Label(String(localized: "session.pause.status"), systemImage: "pause.circle.fill")
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(secondaryForeground)
         }
     }
 
@@ -458,7 +487,7 @@ struct ActiveSessionView: View {
                 if appModel.settings.advancedDisallowEarlyFinish {
                     Text(String(localized: "settings.earlyFinish.note"))
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(secondaryForeground)
                 }
             } else {
                 Button(String(localized: "session.endRest")) {
@@ -497,6 +526,24 @@ struct ActiveSessionView: View {
             return hasHourPart ? 160 : 200
         } else {
             return hasHourPart ? 92 : 108
+        }
+    }
+}
+
+private struct AppBackgroundLite: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        if colorScheme == .dark {
+            Color(UIColor.secondarySystemBackground)
+                .ignoresSafeArea()
+        } else {
+            LinearGradient(
+                colors: ThemePalette.editorBackgroundColors(for: "sunset", colorScheme: .light),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
         }
     }
 }

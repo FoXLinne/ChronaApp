@@ -164,6 +164,7 @@ struct AppSettings: Codable, Equatable {
     var stopwatchPauseLimitMinutes: Int?
     var minimalModeActivationDelaySeconds: Int
     var showStatusBarOverlay: Bool
+    var showPersonalizedBackground: Bool
 
     static let `default` = AppSettings(
         autoMoveCompletedTaskToTop: false,
@@ -180,7 +181,8 @@ struct AppSettings: Codable, Equatable {
         advancedDisallowEarlyFinish: false,
         stopwatchPauseLimitMinutes: nil,
         minimalModeActivationDelaySeconds: 5,
-        showStatusBarOverlay: true
+        showStatusBarOverlay: true,
+        showPersonalizedBackground: true
     )
 
     init(
@@ -198,7 +200,8 @@ struct AppSettings: Codable, Equatable {
         advancedDisallowEarlyFinish: Bool = false,
         stopwatchPauseLimitMinutes: Int? = nil,
         minimalModeActivationDelaySeconds: Int = 5,
-        showStatusBarOverlay: Bool = true
+        showStatusBarOverlay: Bool = true,
+        showPersonalizedBackground: Bool = true
     ) {
         self.autoMoveCompletedTaskToTop = autoMoveCompletedTaskToTop
         self.strikethroughCompletedTask = strikethroughCompletedTask
@@ -215,6 +218,7 @@ struct AppSettings: Codable, Equatable {
         self.stopwatchPauseLimitMinutes = stopwatchPauseLimitMinutes
         self.minimalModeActivationDelaySeconds = minimalModeActivationDelaySeconds
         self.showStatusBarOverlay = showStatusBarOverlay
+        self.showPersonalizedBackground = showPersonalizedBackground
     }
 
     /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容
@@ -235,6 +239,7 @@ struct AppSettings: Codable, Equatable {
         stopwatchPauseLimitMinutes = try c.decodeIfPresent(Int.self, forKey: .stopwatchPauseLimitMinutes)
         minimalModeActivationDelaySeconds = try c.decodeIfPresent(Int.self, forKey: .minimalModeActivationDelaySeconds) ?? 5
         showStatusBarOverlay = try c.decodeIfPresent(Bool.self, forKey: .showStatusBarOverlay) ?? true
+        showPersonalizedBackground = try c.decodeIfPresent(Bool.self, forKey: .showPersonalizedBackground) ?? true
     }
 }
 
