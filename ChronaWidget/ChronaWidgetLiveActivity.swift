@@ -143,6 +143,7 @@ private struct CompactTrailingView: View {
         } else {
             TimerDisplayView(state: state, font: .system(.caption, design: .rounded).monospacedDigit().weight(.semibold))
                 .frame(maxWidth: 46, alignment: .trailing)
+                .minimumScaleFactor(0.8)
         }
     }
 }
@@ -177,7 +178,6 @@ private struct TimerDisplayView: View {
         .multilineTextAlignment(.trailing)
         .foregroundStyle(state.isPaused ? Color.secondary : Color("AccentColor"))
         .lineLimit(1)
-        .minimumScaleFactor(0.8)
     }
 }
 

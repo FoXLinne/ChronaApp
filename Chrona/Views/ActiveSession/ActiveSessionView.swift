@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct ActiveSessionView: View {
@@ -9,6 +10,10 @@ struct ActiveSessionView: View {
     @State private var hasPlayedInitialImmersiveTransition = false
     @State private var disableClockAnimation = false
     @State private var showSettings = false
+    @State private var currentTime = Date.now
+    @State private var batteryLevel: Float = -1
+    @State private var isLandscapeForOverlay = false
+    @State private var burnInOffset = CGSize.zero
 
     private var isImmersive: Bool {
         appModel.shouldShowMinimalMode && !revealControls
@@ -141,7 +146,9 @@ struct ActiveSessionView: View {
                     emptyState(isLandscape: isLandscape)
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
+
             }
+            .onChange(of: isLandscape) { _, newValue in isLandscapeForOverlay = newValue }
         }
         .transition(.opacity)
         .contentShape(Rectangle())
@@ -156,6 +163,8 @@ struct ActiveSessionView: View {
             ScreenAwakeController.updateRefreshRate(isImmersive: isImmersive)
             appModel.setActiveImmersiveChromeHidden(isImmersive)
             disableClockAnimation = isImmersive
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            batteryLevel = UIDevice.current.batteryLevel
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -218,13 +227,38 @@ struct ActiveSessionView: View {
             }
         }
 
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
+            currentTime = time
+            if batteryLevel < 0 { batteryLevel = UIDevice.current.batteryLevel }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
+            batteryLevel = UIDevice.current.batteryLevel
+        }
+        .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
+            let maxShift: CGFloat = 3
+            burnInOffset = CGSize(
+                width: CGFloat.random(in: -maxShift...maxShift),
+                height: CGFloat.random(in: -maxShift...maxShift)
+            )
+        }
+
         .onDisappear {
             autoHideTask?.cancel()
             ScreenAwakeController.updateRefreshRate(isImmersive: false)
             appModel.setActiveImmersiveChromeHidden(false)
+            UIDevice.current.isBatteryMonitoringEnabled = false
         }
         .toolbar(isImmersive ? .hidden : .visible, for: .tabBar)
         .statusBarHidden(appModel.shouldShowMinimalMode && !revealControls)
+        .overlay(alignment: .topLeading) {
+            if appModel.settings.showStatusBarOverlay {
+                statusBarContent
+                    .padding(.top, (isLandscapeForOverlay ? 35 : 75) + burnInOffset.height)
+                    .padding(.leading, (isLandscapeForOverlay ? 50 : 20) + burnInOffset.width)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
+        }
         .alert(String(localized: "session.stop.confirm.title"), isPresented: $showStopConfirm) {
             Button(String(localized: "common.cancel"), role: .cancel) {}
             Button(String(localized: "common.stop"), role: .destructive) {
@@ -248,6 +282,37 @@ struct ActiveSessionView: View {
             }
         } message: {
             Text(String(localized: "session.discard.confirm.message"))
+        }
+    }
+
+    // MARK: - 状态栏覆盖层（时间 + 电量）
+
+    private var statusBarContent: some View {
+        HStack(spacing: 5) {
+            Text(currentTime.formatted(.dateTime.hour().minute()))
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+
+            Text("·")
+                .font(.system(size: 11, weight: .thin))
+
+            if batteryLevel >= 0 {
+                Image(systemName: batteryIcon(for: batteryLevel))
+                    .font(.system(size: 9, weight: .light))
+
+                Text("\(Int(batteryLevel * 100))%")
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+            }
+        }
+        .foregroundStyle(.white.opacity(0.35))
+    }
+
+    private func batteryIcon(for level: Float) -> String {
+        switch level {
+        case ..<0.1: return "battery.0"
+        case ..<0.25: return "battery.25"
+        case ..<0.5: return "battery.50"
+        case ..<0.75: return "battery.75"
+        default: return "battery.100"
         }
     }
 

@@ -39,20 +39,38 @@ final class AppViewModel: ObservableObject {
     init(forcePreviewMode: Bool = false) {
         let runningForPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
         isPreviewMode = forcePreviewMode || runningForPreview
-        let snapshot = isPreviewMode ? AppSnapshot.default : persistence.load()
-        self.tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
-        self.sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
-        self.countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
-        self.profile = snapshot.profile
-        self.settings = snapshot.settings
-        self.checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
-        self.lastTaskID = snapshot.lastTaskID
-        self.activeSession = snapshot.activeSession
-        self.quickLaunchTaskID = snapshot.lastTaskID
+
+        if isPreviewMode {
+            let snapshot = AppSnapshot.default
+            tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
+            sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+            countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
+            profile = snapshot.profile
+            settings = snapshot.settings
+            checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
+            lastTaskID = snapshot.lastTaskID
+            activeSession = snapshot.activeSession
+            quickLaunchTaskID = snapshot.lastTaskID
+        } else {
+            _ = persistence.migrateIfNeeded()
+
+            let dataStore = persistence.loadData()
+            let storedSettings = persistence.loadSettings()
+
+            tasks = dataStore.tasks.sorted(by: { $0.order < $1.order })
+            sessions = dataStore.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+            countdownEvents = dataStore.countdownEvents.sorted(by: { $0.date < $1.date })
+            profile = dataStore.profile
+            settings = storedSettings
+            checkInDates = Self.normalizedCheckInDates(dataStore.checkInDates ?? [])
+            lastTaskID = dataStore.lastTaskID
+            activeSession = dataStore.activeSession
+            quickLaunchTaskID = dataStore.lastTaskID
+        }
 
         startTicker()
         if !isPreviewMode {
-            wirePersistence()
+            wirePersistenceAndSideEffects()
             syncReminder()
         }
         refreshDerivedState()
@@ -735,7 +753,7 @@ final class AppViewModel: ObservableObject {
                 modeLabel: liveActivityModeLabel(for: session.mode),
                 modeSystemImage: liveActivityModeImage(for: session.mode),
                 isPaused: session.isPaused,
-                isStopwatch: session.mode == .stopwatch
+                isStopwatch: session.mode == .stopwatch && session.phase == .focus
             )
 
             // staleDate：倒计时/番茄钟在结束时间标记为过期；秒表无限期
@@ -746,24 +764,21 @@ final class AppViewModel: ObservableObject {
                     await activity.update(ActivityContent(state: state, staleDate: staleDate))
                 }
             } else {
-                // 尝试复用应用重启前遗留的活动实例
-                if let existingActivity = Activity<TimerActivityAttributes>.activities.first {
-                    timerActivity = existingActivity
-                    Task {
-                        await existingActivity.update(ActivityContent(state: state, staleDate: staleDate))
-                    }
-                } else {
-                    // 启动新活动
-                    let attributes = TimerActivityAttributes(taskID: session.taskID)
-                    do {
-                        timerActivity = try Activity.request(
-                            attributes: attributes,
-                            content: ActivityContent(state: state, staleDate: staleDate),
-                            pushType: nil
-                        )
-                    } catch {
-                        print("Live Activity 启动失败: \(error.localizedDescription)")
-                    }
+                // 恢复/首次启动：先清理所有遗留活动（可能已 stale 无法 update），再新建
+                let staleActivities = Activity<TimerActivityAttributes>.activities
+                for stale in staleActivities {
+                    Task { await stale.end(nil, dismissalPolicy: .immediate) }
+                }
+
+                let attributes = TimerActivityAttributes(taskID: session.taskID)
+                do {
+                    timerActivity = try Activity.request(
+                        attributes: attributes,
+                        content: ActivityContent(state: state, staleDate: staleDate),
+                        pushType: nil
+                    )
+                } catch {
+                    print("Live Activity 启动失败: \(error.localizedDescription)")
                 }
             }
         } else {
@@ -800,10 +815,9 @@ final class AppViewModel: ObservableObject {
 
 
     private func wirePersistence() {
-        // 数据持久化：监听所有状态变化
+        // 用户数据与设置分开持久化，避免设置切换时重复写入会话/任务大文件。
         Publishers.MergeMany(
             $profile.map { _ in () }.eraseToAnyPublisher(),
-            $settings.map { _ in () }.eraseToAnyPublisher(),
             $activeSession.map { _ in () }.eraseToAnyPublisher(),
             $countdownEvents.map { _ in () }.eraseToAnyPublisher(),
             $tasks.map { _ in () }.eraseToAnyPublisher(),
@@ -812,10 +826,61 @@ final class AppViewModel: ObservableObject {
             $lastTaskID.map { _ in () }.eraseToAnyPublisher()
         )
         .sink { [weak self] _ in
-            self?.persistState()
+            self?.persistDataState()
         }
         .store(in: &cancellables)
 
+        $settings
+            .sink { [weak self] newSettings in
+                self?.persistSettingsState(newSettings)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func currentDataStore() -> DataStore {
+        DataStore(
+            version: StorageSchemaVersion.current,
+            tasks: tasks,
+            sessions: sessions,
+            countdownEvents: countdownEvents,
+            profile: profile,
+            checkInDates: checkInDates,
+            lastTaskID: lastTaskID,
+            activeSession: activeSession
+        )
+    }
+
+    private func currentSettingsStore(settings settingsValue: AppSettings? = nil) -> SettingsStore {
+        SettingsStore(
+            version: StorageSchemaVersion.current,
+            settings: settingsValue ?? settings
+        )
+    }
+
+    private func persistDataState() {
+        guard !isPreviewMode else { return }
+
+        persistence.save(data: currentDataStore())
+        refreshDerivedState()
+    }
+
+    private func persistSettingsState(_ newSettings: AppSettings) {
+        guard !isPreviewMode else { return }
+
+        // @Published 在 willSet 发出新值；这里必须保存 publisher 传入的新设置，避免杀进程时写回旧值。
+        persistence.save(settings: currentSettingsStore(settings: newSettings))
+        refreshDerivedState()
+    }
+
+    private func persistState() {
+        guard !isPreviewMode else { return }
+
+        persistence.save(data: currentDataStore())
+        persistence.save(settings: currentSettingsStore())
+        refreshDerivedState()
+    }
+
+    private func wireSideEffects() {
         // 提醒同步：仅在提醒相关设置改变时重新调度
         $settings
             .dropFirst()
@@ -842,22 +907,9 @@ final class AppViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func persistState() {
-        guard !isPreviewMode else { return }
-
-        let snapshot = AppSnapshot(
-            tasks: tasks,
-            sessions: sessions,
-            countdownEvents: countdownEvents,
-            profile: profile,
-            settings: settings,
-            checkInDates: checkInDates,
-            lastTaskID: lastTaskID,
-            activeSession: activeSession
-        )
-        persistence.save(snapshot)
-        // 通知调度由专用订阅者负责，不在 persistState 中处理
-        refreshDerivedState()
+    private func wirePersistenceAndSideEffects() {
+        wirePersistence()
+        wireSideEffects()
     }
 
     /// 同步每日提醒状态：今天已专注则取消，否则按设置调度
@@ -912,8 +964,7 @@ final class AppViewModel: ObservableObject {
         guard !isPreviewMode else { return }
 
         // Reset to default state
-        let defaultSnapshot = AppSnapshot.default
-        tasks = defaultSnapshot.tasks
+        tasks = []
         sessions = []
         countdownEvents = []
         profile = ProfileInfo.default
@@ -924,66 +975,105 @@ final class AppViewModel: ObservableObject {
         activeSession = nil
         selectedTab = .active
 
-        // Clear persisted data
-        persistence.save(defaultSnapshot)
+        // 清除持久化数据
+        let dataStore = DataStore(
+            version: StorageSchemaVersion.current,
+            tasks: [],
+            sessions: [],
+            countdownEvents: [],
+            profile: ProfileInfo.default,
+            checkInDates: [],
+            lastTaskID: nil,
+            activeSession: nil
+        )
+        persistence.save(data: dataStore)
+        persistence.save(settings: currentSettingsStore())
         notifications.cancelDailyReminder()
         refreshDerivedState(shouldSyncActivity: true)
         showNotice(String(localized: "settings.clearData.success"))
     }
 
     // MARK: - 数据导入导出
-    
-    /// 导出数据为 JSON 文件
+
+    /// 导出数据为含版本号的 JSON 文件
     func exportData() -> Data? {
         guard !isPreviewMode else { return nil }
-        
-        let snapshot = AppSnapshot(
+
+        let dataStore = DataStore(
+            version: StorageSchemaVersion.current,
             tasks: tasks,
             sessions: sessions,
             countdownEvents: countdownEvents,
             profile: profile,
-            settings: settings,
             checkInDates: checkInDates,
             lastTaskID: lastTaskID,
             activeSession: activeSession
         )
-        
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = .prettyPrinted
-        
-        return try? encoder.encode(snapshot)
+        return persistence.exportData(data: dataStore, settings: settings)
     }
-    
-    /// 导入数据从 JSON 文件
-    func importData(from data: Data) -> Bool {
-        guard !isPreviewMode else { return false }
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        guard let snapshot = try? decoder.decode(AppSnapshot.self, from: data) else {
-            return false
+
+    /// 预检导入文件，供 UI 展示版本提示；返回值可直接传给 importData(_:)。
+    func inspectImport(data: Data) -> PersistenceService.ImportResult? {
+        persistence.inspectImport(data: data)
+    }
+
+    /// 从原始 JSON 数据导入；适合外部调用，内部会先完成一次预检解析。
+    func importData(from data: Data) -> ImportStatus {
+        guard !isPreviewMode else { return .failed }
+
+        guard let result = inspectImport(data: data) else {
+            return .failed
         }
-        
+        return importData(result)
+    }
+
+    /// 使用已预检解析的结果导入，避免确认弹窗后再次解码同一份文件。
+    func importData(_ result: PersistenceService.ImportResult) -> ImportStatus {
+        guard !isPreviewMode else { return .failed }
+
         // 应用导入的数据
-        tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
-        sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
-        countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
-        profile = snapshot.profile
-        settings = snapshot.settings
-        checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
-        lastTaskID = snapshot.lastTaskID
-        quickLaunchTaskID = snapshot.lastTaskID
-        activeSession = snapshot.activeSession
-        
+        tasks = result.tasks.sorted(by: { $0.order < $1.order })
+        sessions = result.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+        countdownEvents = result.countdownEvents.sorted(by: { $0.date < $1.date })
+        profile = result.profile
+        settings = result.settings
+        checkInDates = Self.normalizedCheckInDates(result.checkInDates ?? [])
+        lastTaskID = result.lastTaskID
+        quickLaunchTaskID = result.lastTaskID
+        activeSession = nil // 导入时不恢复进行中的计时
+
         // 持久化数据
-        persistence.save(snapshot)
+        let dataStore = DataStore(
+            version: StorageSchemaVersion.current,
+            tasks: tasks,
+            sessions: sessions,
+            countdownEvents: countdownEvents,
+            profile: profile,
+            checkInDates: checkInDates,
+            lastTaskID: lastTaskID,
+            activeSession: activeSession
+        )
+        persistence.save(data: dataStore)
+        persistence.save(settings: currentSettingsStore())
+
         refreshDerivedState(shouldSyncActivity: true)
         syncReminder()
-        
-        showNotice(String(localized: "settings.importData.success"))
-        return true
+
+        return ImportStatus.success(
+            fileVersion: result.fileVersion,
+            isLegacy: result.isLegacy,
+            isSignatureMismatch: result.isSignatureMismatch
+        )
+    }
+
+    enum ImportStatus {
+        case success(fileVersion: Int, isLegacy: Bool, isSignatureMismatch: Bool)
+        case failed
+
+        var isSuccess: Bool {
+            if case .success = self { return true }
+            return false
+        }
     }
 }
 
