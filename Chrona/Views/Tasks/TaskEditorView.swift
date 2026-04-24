@@ -155,7 +155,7 @@ struct TaskEditorView: View {
     }
 
     private var isDuplicateName: Bool {
-        appModel.isTaskNameDuplicate(title, excluding: task?.id)
+        _appModel.wrappedValue.isTaskNameDuplicate(title, excluding: task?.id)
     }
 
     private var countdownSliderMinutesBinding: Binding<Double> {

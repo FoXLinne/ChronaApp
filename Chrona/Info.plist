@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<!-- 开启文件共享，使 Documents 目录在 iOS 文件 App 中可见 -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<!-- 允许 App 就地打开外部文档，配合文件共享使用 -->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
 </plist>

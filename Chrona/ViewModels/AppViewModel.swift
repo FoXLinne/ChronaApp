@@ -924,13 +924,12 @@ final class AppViewModel: ObservableObject {
         showNotice(String(localized: "settings.clearData.success"))
     }
 
-    // MARK: - 数据导入导出 (Persistence Import/Export)
+    // MARK: - 数据导入导出
     
-    /// 将当前所有数据导出为 JSON 格式的 Data
+    /// 导出数据为 JSON 文件
     func exportData() -> Data? {
         guard !isPreviewMode else { return nil }
         
-        // 创建当前数据的完整快照
         let snapshot = AppSnapshot(
             tasks: tasks,
             sessions: sessions,
@@ -944,26 +943,23 @@ final class AppViewModel: ObservableObject {
         
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = .prettyPrinted // 导出的 JSON 增加可读性
+        encoder.outputFormatting = .prettyPrinted
         
         return try? encoder.encode(snapshot)
     }
     
-    /// 从 JSON Data 中恢复数据，返回是否成功
+    /// 导入数据从 JSON 文件
     func importData(from data: Data) -> Bool {
         guard !isPreviewMode else { return false }
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         
-        // 1. 尝试解析数据
         guard let snapshot = try? decoder.decode(AppSnapshot.self, from: data) else {
-            print("Import: JSON 解析失败")
             return false
         }
         
-        // 2. 更新内存状态 (触发 @Published 响应)
-        // 注意：AppViewModel 是 @MainActor，所以这些更新都在主线程执行
+        // 应用导入的数据
         tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
         sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
         countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
@@ -974,10 +970,10 @@ final class AppViewModel: ObservableObject {
         quickLaunchTaskID = snapshot.lastTaskID
         activeSession = snapshot.activeSession
         
-        // 3. 同步到磁盘和系统服务
+        // 持久化数据
         persistence.save(snapshot)
-        refreshDerivedState(shouldSyncActivity: true) // 刷新灵动岛等
-        syncReminder() // 同步提醒事项
+        refreshDerivedState(shouldSyncActivity: true)
+        syncReminder()
         
         showNotice(String(localized: "settings.importData.success"))
         return true
