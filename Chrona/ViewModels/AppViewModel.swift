@@ -464,15 +464,21 @@ final class AppViewModel: ObservableObject {
               let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month))
         else { return [:] }
 
-        var dict: [Date: TimeInterval] = [:]
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        var durations = Dictionary(grouping: sessions.filter { record in
+            record.endedAt >= monthStart && record.endedAt < nextMonthStart
+        }) { record in
+            calendar.startOfDay(for: record.endedAt)
+        }
+            .mapValues { records in
+                records.reduce(0) { $0 + $1.focusedDuration }
+            }
+
         for day in range {
             guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { continue }
-            let total = sessions
-                .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
-                .reduce(0) { $0 + $1.focusedDuration }
-            dict[date] = total
+            durations[date] = durations[date] ?? 0
         }
-        return dict
+        return durations
     }
 
     func completedCountToday(for task: TaskItem) -> Int {
@@ -493,8 +499,16 @@ final class AppViewModel: ObservableObject {
 
     func averageDailyDuration() -> TimeInterval {
         guard let earliest = sessions.map(\.startedAt).min() else { return 0 }
-        let dayCount = max(1, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: earliest), to: Calendar.current.startOfDay(for: .now)).day ?? 0)
+        let calendar = Calendar.current
+        let earliestDay = calendar.startOfDay(for: earliest)
+        let today = calendar.startOfDay(for: .now)
+        let elapsedDays = calendar.dateComponents([.day], from: earliestDay, to: today).day ?? 0
+        let dayCount = max(1, elapsedDays + 1)
         return sessions.reduce(0) { $0 + $1.focusedDuration } / Double(dayCount)
+    }
+
+    var totalFocusedDurationAllTime: TimeInterval {
+        sessions.reduce(0) { $0 + $1.focusedDuration }
     }
 
     var futureEvents: [CountdownEvent] {
@@ -510,9 +524,16 @@ final class AppViewModel: ObservableObject {
     }
 
     func taskDistribution(range: TimeRange) -> [TaskDistributionEntry] {
-        let grouped = Dictionary(grouping: filteredSessions(range: range), by: \.taskTitle)
+        let grouped = Dictionary(grouping: filteredSessions(range: range)) { record in
+            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        }
         return grouped.map { key, value in
-            TaskDistributionEntry(id: UUID(), taskTitle: key, duration: value.reduce(0) { $0 + $1.focusedDuration }, colorSeed: key)
+            TaskDistributionEntry(
+                id: key,
+                taskTitle: value.first?.taskTitle ?? "",
+                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                colorSeed: key
+            )
         }
         .sorted(by: { $0.duration > $1.duration })
     }
@@ -520,14 +541,20 @@ final class AppViewModel: ObservableObject {
     func monthlyTrendPoints() -> [DayTrendEntry] {
         let calendar = Calendar.current
         let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
-        let monthEnd = statisticsMonthEnd(for: selectedStatisticsMonth)
-        let dayCount = max(1, calendar.dateComponents([.day], from: monthStart, to: monthEnd).day ?? 0)
+        let dayRange = calendar.range(of: .day, in: .month, for: monthStart) ?? 1..<2
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let durationsByDay = Dictionary(grouping: sessions.filter { record in
+            record.endedAt >= monthStart && record.endedAt < nextMonthStart
+        }) { record in
+            calendar.startOfDay(for: record.endedAt)
+        }
+            .mapValues { records in
+                records.reduce(0) { $0 + $1.focusedDuration }
+            }
 
-        return (0...dayCount).map { dayOffset in
-            let date = calendar.date(byAdding: .day, value: dayOffset, to: monthStart) ?? monthStart
-            let duration = sessions
-                .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
-                .reduce(0) { $0 + $1.focusedDuration }
+        return dayRange.compactMap { day in
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { return nil }
+            let duration = durationsByDay[date] ?? 0
             return DayTrendEntry(date: date, duration: duration)
         }
     }
@@ -553,14 +580,19 @@ final class AppViewModel: ObservableObject {
 
     func cycleStatisticsMonth(forward: Bool) {
         let candidate = Calendar.current.date(byAdding: .month, value: forward ? 1 : -1, to: selectedStatisticsMonth) ?? selectedStatisticsMonth
+        let target: Date
         if forward {
             let currentMonth = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: .now)) ?? .now
-            selectedStatisticsMonth = min(candidate, currentMonth)
+            target = min(candidate, currentMonth)
         } else {
-            selectedStatisticsMonth = candidate
+            target = candidate
         }
-        selectedStatisticsMonth = statisticsMonthStart(for: selectedStatisticsMonth)
-        statisticsTrendScrollDate = defaultStatisticsTrendStartDate(for: selectedStatisticsMonth, anchorDate: selectedStatisticsMonth)
+        let newMonth = statisticsMonthStart(for: target)
+        let newScrollDate = defaultStatisticsTrendStartDate(for: newMonth, anchorDate: newMonth)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedStatisticsMonth = newMonth
+            statisticsTrendScrollDate = newScrollDate
+        }
     }
 
     private func statisticsMonthStart(for date: Date) -> Date {

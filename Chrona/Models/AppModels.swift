@@ -165,6 +165,8 @@ struct AppSettings: Codable, Equatable {
     var minimalModeActivationDelaySeconds: Int
     var showStatusBarOverlay: Bool
     var showPersonalizedBackground: Bool
+    var statisticsCardOrder: [String]
+    var statisticsHiddenCards: [String]
 
     static let `default` = AppSettings(
         autoMoveCompletedTaskToTop: false,
@@ -182,7 +184,9 @@ struct AppSettings: Codable, Equatable {
         stopwatchPauseLimitMinutes: nil,
         minimalModeActivationDelaySeconds: 5,
         showStatusBarOverlay: true,
-        showPersonalizedBackground: true
+        showPersonalizedBackground: true,
+        statisticsCardOrder: ["overview", "todayFocus", "heatmap", "distribution", "monthlyTrend"],
+        statisticsHiddenCards: []
     )
 
     init(
@@ -201,7 +205,9 @@ struct AppSettings: Codable, Equatable {
         stopwatchPauseLimitMinutes: Int? = nil,
         minimalModeActivationDelaySeconds: Int = 5,
         showStatusBarOverlay: Bool = true,
-        showPersonalizedBackground: Bool = true
+        showPersonalizedBackground: Bool = true,
+        statisticsCardOrder: [String] = [],
+        statisticsHiddenCards: [String] = []
     ) {
         self.autoMoveCompletedTaskToTop = autoMoveCompletedTaskToTop
         self.strikethroughCompletedTask = strikethroughCompletedTask
@@ -219,6 +225,8 @@ struct AppSettings: Codable, Equatable {
         self.minimalModeActivationDelaySeconds = minimalModeActivationDelaySeconds
         self.showStatusBarOverlay = showStatusBarOverlay
         self.showPersonalizedBackground = showPersonalizedBackground
+        self.statisticsCardOrder = statisticsCardOrder
+        self.statisticsHiddenCards = statisticsHiddenCards
     }
 
     /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容
@@ -240,6 +248,8 @@ struct AppSettings: Codable, Equatable {
         minimalModeActivationDelaySeconds = try c.decodeIfPresent(Int.self, forKey: .minimalModeActivationDelaySeconds) ?? 5
         showStatusBarOverlay = try c.decodeIfPresent(Bool.self, forKey: .showStatusBarOverlay) ?? true
         showPersonalizedBackground = try c.decodeIfPresent(Bool.self, forKey: .showPersonalizedBackground) ?? true
+        statisticsCardOrder = try c.decodeIfPresent([String].self, forKey: .statisticsCardOrder) ?? ["overview", "todayFocus", "heatmap", "distribution", "monthlyTrend"]
+        statisticsHiddenCards = try c.decodeIfPresent([String].self, forKey: .statisticsHiddenCards) ?? []
     }
 }
 
@@ -358,7 +368,7 @@ enum TimeRange: String, CaseIterable, Identifiable {
 }
 
 struct TaskDistributionEntry: Identifiable {
-    var id: UUID
+    var id: String
     var taskTitle: String
     var duration: TimeInterval
     var colorSeed: String
@@ -371,9 +381,10 @@ enum StopConsequence {
 }
 
 struct DayTrendEntry: Identifiable {
-    var id: UUID = UUID()
     var date: Date
     var duration: TimeInterval
+
+    var id: Date { date }
 }
 
 struct RoutineTrendPoint: Identifiable {
