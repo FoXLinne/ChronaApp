@@ -87,6 +87,43 @@ final class AppViewModel: ObservableObject {
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: today) ?? today
         model.checkInDates = normalizedCheckInDates([today, yesterday, twoDaysAgo])
+
+        // 热力图预览：构造最近 7 天不同时长的模拟专注记录
+        let sampleDurations: [TimeInterval] = [
+            0,
+            15 * 60,
+            45 * 60,
+            90 * 60,
+            120 * 60,
+            30 * 60,
+            5 * 60,
+        ]
+        let fallbackTask = TaskItem(title: "Sample", mode: .pomodoro, order: 0)
+        let baseHour: TimeInterval = 9 * 3600
+
+        var previewSessions: [FocusSessionRecord] = []
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let duration = sampleDurations[offset]
+            guard duration > 0 else { continue }
+            let task = model.tasks.first ?? fallbackTask
+            let startTime = day.addingTimeInterval(baseHour)
+            let endTime = startTime.addingTimeInterval(duration)
+            let session = FocusSessionRecord(
+                id: UUID(),
+                taskID: task.id,
+                taskTitle: task.title,
+                mode: task.mode,
+                startedAt: startTime,
+                endedAt: endTime,
+                focusedDuration: duration,
+                wasCompleted: true,
+                wasAbandoned: false
+            )
+            previewSessions.append(session)
+        }
+        model.sessions = previewSessions.sorted(by: { $0.startedAt > $1.startedAt })
+
         return model
     }
 
@@ -391,6 +428,24 @@ final class AppViewModel: ObservableObject {
         return streak
     }
 
+    var longestCheckInStreak: Int {
+        guard checkInDates.count > 1 else { return checkInDates.count }
+
+        let calendar = Calendar.current
+        let sorted = Set(checkInDates.map { calendar.startOfDay(for: $0) }).sorted()
+        var maxLen = 1
+        var cur = 1
+        for i in 1..<sorted.count {
+            if let diff = calendar.dateComponents([.day], from: sorted[i - 1], to: sorted[i]).day, diff == 1 {
+                cur += 1
+                maxLen = max(maxLen, cur)
+            } else {
+                cur = 1
+            }
+        }
+        return maxLen
+    }
+
     @discardableResult
     func checkInToday() -> Bool {
         let today = Calendar.current.startOfDay(for: .now)
@@ -400,6 +455,24 @@ final class AppViewModel: ObservableObject {
 
         checkInDates = Self.normalizedCheckInDates(checkInDates + [today])
         return true
+    }
+
+    /// 指定月份的每日专注时长聚合，供热力图使用。
+    func dailyFocusDurations(for month: Date) -> [Date: TimeInterval] {
+        let calendar = Calendar.current
+        guard let range = calendar.range(of: .day, in: .month, for: month),
+              let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month))
+        else { return [:] }
+
+        var dict: [Date: TimeInterval] = [:]
+        for day in range {
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { continue }
+            let total = sessions
+                .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
+                .reduce(0) { $0 + $1.focusedDuration }
+            dict[date] = total
+        }
+        return dict
     }
 
     func completedCountToday(for task: TaskItem) -> Int {
