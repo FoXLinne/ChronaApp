@@ -699,6 +699,25 @@ final class AppViewModel: ObservableObject {
         )
     }
 
+    func taskDistribution(on date: Date) -> [TaskDistributionEntry] {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
+        let filtered = sessions.filter { $0.endedAt >= dayStart && $0.endedAt < dayEnd }
+        let grouped = Dictionary(grouping: filtered) { record in
+            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        }
+        return grouped.map { key, value in
+            TaskDistributionEntry(
+                id: key,
+                taskTitle: value.first?.taskTitle ?? "",
+                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                colorSeed: key
+            )
+        }
+        .sorted(by: { $0.duration > $1.duration })
+    }
+
     private func filteredSessions(range: TimeRange) -> [FocusSessionRecord] {
         let calendar = Calendar.current
         return sessions.filter { record in
@@ -827,7 +846,13 @@ final class AppViewModel: ObservableObject {
 
     private func syncLiveActivity() {
         guard settings.liveActivitiesEnabled else {
+            // 关闭时：清本地引用 + 立即结束所有系统活动
+            let ref = timerActivity
+            timerActivity = nil
             Task {
+                if let activity = ref {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
                 for activity in Activity<TimerActivityAttributes>.activities {
                     await activity.end(nil, dismissalPolicy: .immediate)
                 }
@@ -844,22 +869,33 @@ final class AppViewModel: ObservableObject {
             // 秒表正向计时的参考起点 = 现在 - 已计时长（Widget 自动正向计数，无需 App 推送）
             let elapsedReferenceDate = Date.now.addingTimeInterval(-status.elapsed)
 
-            // 暂停时的冻结显示文字（用于 Widget 显示静态快照，不会随时间自动更新）
+            // 暂停时冻结计时器显示值；有时限暂停交给 Widget 按结束时间自动倒计时。
             let pausedTimerText: String
-            if session.isPaused {
+            let pauseEndTime: Date?
+            if session.isPaused, let pauseDeadline = session.pauseDeadline {
+                pausedTimerText = ""
+                pauseEndTime = pauseDeadline
+            } else if session.isPaused {
+                // 无时限暂停：冻结当前时间值
                 if session.mode == .stopwatch {
                     pausedTimerText = formattedDuration(status.elapsed)
                 } else {
                     pausedTimerText = formattedDuration(status.remaining ?? 0)
                 }
+                pauseEndTime = nil
             } else {
                 pausedTimerText = ""
+                pauseEndTime = nil
             }
 
-            // 阶段标签（暂停时覆盖为「已暂停」）
+            // 阶段标签：有时限暂停 vs 无时限暂停 区分显示
             let phaseLabel: String
             if session.isPaused {
-                phaseLabel = String(localized: "la.paused")
+                if session.pauseDeadline != nil {
+                    phaseLabel = String(localized: "la.paused")
+                } else {
+                    phaseLabel = String(localized: "la.paused.indefinite")
+                }
             } else if session.phase == .focus {
                 phaseLabel = String(localized: "la.phase.focus")
             } else {
@@ -870,37 +906,46 @@ final class AppViewModel: ObservableObject {
                 endTime: endTime,
                 elapsedReferenceDate: elapsedReferenceDate,
                 pausedTimerText: pausedTimerText,
+                pauseEndTime: pauseEndTime,
                 taskTitle: session.taskTitle,
                 phaseLabel: phaseLabel,
                 modeLabel: liveActivityModeLabel(for: session.mode),
                 modeSystemImage: liveActivityModeImage(for: session.mode),
                 isPaused: session.isPaused,
+                isRest: session.phase == .rest,
                 isStopwatch: session.mode == .stopwatch && session.phase == .focus
             )
 
             // staleDate：倒计时/番茄钟在结束时间标记为过期；秒表无限期
             let staleDate = endTime
 
-            if let activity = timerActivity {
+            // 尝试更新已有活动；若本地引用已失效则清除，走新建流程
+            if let activity = timerActivity,
+               Activity<TimerActivityAttributes>.activities.contains(where: { $0.id == activity.id }) {
                 Task {
                     await activity.update(ActivityContent(state: state, staleDate: staleDate))
                 }
             } else {
-                // 恢复/首次启动：先清理所有遗留活动（可能已 stale 无法 update），再新建
+                // 引用已失效或首次创建：清理残留，新建
+                timerActivity = nil
                 let staleActivities = Activity<TimerActivityAttributes>.activities
-                for stale in staleActivities {
-                    Task { await stale.end(nil, dismissalPolicy: .immediate) }
-                }
-
                 let attributes = TimerActivityAttributes(taskID: session.taskID)
-                do {
-                    timerActivity = try Activity.request(
-                        attributes: attributes,
-                        content: ActivityContent(state: state, staleDate: staleDate),
-                        pushType: nil
-                    )
-                } catch {
-                    print("Live Activity 启动失败: \(error.localizedDescription)")
+
+                Task { @MainActor in
+                    for stale in staleActivities {
+                        await stale.end(nil, dismissalPolicy: .immediate)
+                    }
+
+                    guard self.timerActivity == nil, self.activeSession != nil else { return }
+                    do {
+                        self.timerActivity = try Activity.request(
+                            attributes: attributes,
+                            content: ActivityContent(state: state, staleDate: staleDate),
+                            pushType: nil
+                        )
+                    } catch {
+                        print("Live Activity failed to start: \(error.localizedDescription)")
+                    }
                 }
             }
         } else {

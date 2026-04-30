@@ -63,8 +63,37 @@ struct RootTabView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if shouldShowReturnToActiveButton, let session = appModel.activeSession {
+                Button {
+                    appModel.selectedTab = .active
+                } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Image(systemName: returnButtonIcon(for: session))
+                                .font(.subheadline.weight(.bold))
+                            Text(returnButtonTimeText(for: session))
+                                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                .monospacedDigit()
+                        }
+
+                        Text(String(localized: "root.returnToActive.hint"))
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                }
+                .buttonStyle(.glass(.regular.tint(returnButtonTint(for: session))))
+                .padding(.trailing, 20)
+                .padding(.bottom, 98)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .accessibilityLabel(String(localized: "root.returnToActive.accessibility"))
+            }
+        }
         // 为全局通知消息的出现/消失添加平滑动画
         .animation(.smooth, value: appModel.globalNotice)
+        .animation(.smooth, value: shouldShowReturnToActiveButton)
         // 视图首次出现时同步屏幕旋转状态
         // 处理应用冷启动或视图重建时，旋转权限可能未初始化的边缘情况
         .onAppear {
@@ -77,6 +106,52 @@ struct RootTabView: View {
             // 只有专注计时页（.active）需要支持横屏以适配沉浸式计时界面
             InterfaceOrientationController.setRotationEnabled(newTab == .active)
         }
+    }
+
+    private var shouldShowReturnToActiveButton: Bool {
+        appModel.activeSession != nil && appModel.selectedTab != .active
+    }
+
+    private func returnButtonIcon(for session: ActiveSessionSnapshot) -> String {
+        if session.isPaused {
+            return "pause.fill"
+        }
+
+        if session.phase == .rest {
+            return "cup.and.saucer.fill"
+        }
+
+        switch session.mode {
+        case .pomodoro:
+            return "timer"
+        case .stopwatch:
+            return "stopwatch"
+        case .countdown:
+            return "hourglass"
+        }
+    }
+
+    private func returnButtonTimeText(for session: ActiveSessionSnapshot) -> String {
+        guard let status = appModel.timerStatus else { return "--:--" }
+
+        if session.isPaused {
+            guard let deadline = session.pauseDeadline else { return String(localized: "session.pause.indefinite") }
+            return appModel.formattedDuration(deadline.timeIntervalSince(appModel.now))
+        }
+
+        if session.phase == .rest {
+            return appModel.formattedDuration(status.remaining ?? 0)
+        }
+
+        return appModel.formattedDuration(status.remaining ?? status.elapsed)
+    }
+
+    private func returnButtonTint(for session: ActiveSessionSnapshot) -> Color {
+        if session.phase == .rest {
+            return .accentColor
+        }
+
+        return session.isPaused ? .blue : .red
     }
 }
 

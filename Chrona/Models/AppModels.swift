@@ -167,6 +167,8 @@ struct AppSettings: Codable, Equatable {
     var showPersonalizedBackground: Bool
     var statisticsCardOrder: [String]
     var statisticsHiddenCards: [String]
+    var statisticsExpandedCards: [String]
+    var statisticsDistributionRange: String
 
     static let `default` = AppSettings(
         autoMoveCompletedTaskToTop: false,
@@ -186,7 +188,9 @@ struct AppSettings: Codable, Equatable {
         showStatusBarOverlay: true,
         showPersonalizedBackground: true,
         statisticsCardOrder: ["overview", "todayFocus", "heatmap", "distribution", "monthlyTrend"],
-        statisticsHiddenCards: []
+        statisticsHiddenCards: [],
+        statisticsExpandedCards: ["overview", "todayFocus", "distribution", "monthlyTrend"],
+        statisticsDistributionRange: "day"
     )
 
     init(
@@ -207,7 +211,9 @@ struct AppSettings: Codable, Equatable {
         showStatusBarOverlay: Bool = true,
         showPersonalizedBackground: Bool = true,
         statisticsCardOrder: [String] = [],
-        statisticsHiddenCards: [String] = []
+        statisticsHiddenCards: [String] = [],
+        statisticsExpandedCards: [String] = [],
+        statisticsDistributionRange: String = "day"
     ) {
         self.autoMoveCompletedTaskToTop = autoMoveCompletedTaskToTop
         self.strikethroughCompletedTask = strikethroughCompletedTask
@@ -227,6 +233,8 @@ struct AppSettings: Codable, Equatable {
         self.showPersonalizedBackground = showPersonalizedBackground
         self.statisticsCardOrder = statisticsCardOrder
         self.statisticsHiddenCards = statisticsHiddenCards
+        self.statisticsExpandedCards = statisticsExpandedCards
+        self.statisticsDistributionRange = statisticsDistributionRange
     }
 
     /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容
@@ -250,6 +258,8 @@ struct AppSettings: Codable, Equatable {
         showPersonalizedBackground = try c.decodeIfPresent(Bool.self, forKey: .showPersonalizedBackground) ?? true
         statisticsCardOrder = try c.decodeIfPresent([String].self, forKey: .statisticsCardOrder) ?? ["overview", "todayFocus", "heatmap", "distribution", "monthlyTrend"]
         statisticsHiddenCards = try c.decodeIfPresent([String].self, forKey: .statisticsHiddenCards) ?? []
+        statisticsExpandedCards = try c.decodeIfPresent([String].self, forKey: .statisticsExpandedCards) ?? ["overview", "todayFocus", "distribution", "monthlyTrend"]
+        statisticsDistributionRange = try c.decodeIfPresent(String.self, forKey: .statisticsDistributionRange) ?? "day"
     }
 }
 

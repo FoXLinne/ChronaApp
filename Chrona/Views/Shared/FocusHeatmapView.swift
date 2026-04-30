@@ -2,12 +2,13 @@ import SwiftUI
 
 /// 专注热力图组件，供签到页和统计页共用。
 /// - showCheckInMarks: 是否在格子右下角显示签到绿点（统计页关掉即可）
+/// - headerTotalDuration: 统计页传入，在左上角显示"本月共专注"大字样式；签到页传 nil 不显示
 struct FocusHeatmapView: View {
     @Binding var month: Date
     let durations: [Date: TimeInterval]
     let checkInDates: [Date]
     let showCheckInMarks: Bool
-    let monthSummary: String?
+    let headerTotalDuration: TimeInterval?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -26,13 +27,13 @@ struct FocusHeatmapView: View {
         durations: [Date: TimeInterval],
         checkInDates: [Date],
         showCheckInMarks: Bool,
-        monthSummary: String? = nil
+        headerTotalDuration: TimeInterval? = nil
     ) {
         _month = month
         self.durations = durations
         self.checkInDates = checkInDates
         self.showCheckInMarks = showCheckInMarks
-        self.monthSummary = monthSummary
+        self.headerTotalDuration = headerTotalDuration
     }
 
     private var isCurrentMonth: Bool {
@@ -59,38 +60,93 @@ struct FocusHeatmapView: View {
 // MARK: - Month Navigation
 private extension FocusHeatmapView {
     var monthNavigation: some View {
-        VStack(spacing: 4) {
-            HStack {
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Button { moveMonth(by: -1) } label: {
-                        Image(systemName: "chevron.left")
-                            .frame(width: 32, height: 32)
-                    }
-                    .buttonStyle(.plain)
-
-                    Text(month.formatted(.dateTime.year().month(.wide)))
-                        .font(.headline.weight(.semibold))
-
-                    Button { moveMonth(by: 1) } label: {
-                        Image(systemName: "chevron.right")
-                            .frame(width: 32, height: 32)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isCurrentMonth)
-                    .opacity(isCurrentMonth ? 0.35 : 1)
-                }
-            }
-
-            if let monthSummary {
-                Text(monthSummary)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+        Group {
+            if headerTotalDuration != nil {
+                statisticsNavigation
+            } else {
+                checkInNavigation
             }
         }
         .padding(.horizontal, 2)
+    }
+
+    /// 统计页：左侧大字概要，右侧月份导航
+    var statisticsNavigation: some View {
+        HStack(alignment: .center) {
+            heatmapSummaryView(duration: headerTotalDuration!)
+
+            Spacer()
+
+            Button { moveMonth(by: -1) } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+
+            Text(month.formatted(.dateTime.year().month(.wide)))
+                .font(.title3.weight(.semibold))
+
+            Button { moveMonth(by: 1) } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(isCurrentMonth)
+            .opacity(isCurrentMonth ? 0.35 : 1)
+        }
+    }
+
+    /// 签到页：居中撑开的导航，没有左侧概要
+    var checkInNavigation: some View {
+        HStack {
+            Button { moveMonth(by: -1) } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(month.formatted(.dateTime.year().month(.wide)))
+                .font(.title3.weight(.semibold))
+
+            Spacer()
+
+            Button { moveMonth(by: 1) } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(isCurrentMonth)
+            .opacity(isCurrentMonth ? 0.35 : 1)
+        }
+    }
+
+    func heatmapSummaryView(duration: TimeInterval) -> some View {
+        let total = max(0, Int(duration.rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(String(localized: "stats.focusHeatmap.monthTotal"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(verbatim: "\(hours)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Text(String(localized: "time.hours"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(verbatim: "\(minutes)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Text(String(localized: "time.minutes"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -106,6 +162,7 @@ private extension FocusHeatmapView {
                     .frame(maxWidth: .infinity)
             }
         }
+        .padding(.horizontal, 6)
     }
 
     var weekdayHeaders: [String] {
@@ -135,6 +192,7 @@ private extension FocusHeatmapView {
                 }
             }
         }
+        .padding(.horizontal, 6)
     }
 
     var calendarDays: [Date?] {
@@ -164,11 +222,11 @@ private extension FocusHeatmapView {
         }
 
         return ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(heatmapColor(for: duration))
                 .aspectRatio(1, contentMode: .fill)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(isToday ? Color.accentColor : .clear, lineWidth: 2)
                 )
 
@@ -180,8 +238,13 @@ private extension FocusHeatmapView {
 
             if hasCheckIn {
                 Circle()
-                    .fill(.green)
-                    .frame(width: 5, height: 5)
+                    .fill(.white)
+                    .frame(width: 7, height: 7)
+                    .overlay(
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 5, height: 5)
+                    )
                     .padding(3)
             }
         }
@@ -210,6 +273,10 @@ private extension FocusHeatmapView {
     func legendSwatch(color: Color) -> some View {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
             .fill(color)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(.secondary.opacity(0.2), lineWidth: 0.5)
+            )
             .frame(width: 16, height: 12)
     }
 
