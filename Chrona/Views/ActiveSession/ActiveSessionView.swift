@@ -31,6 +31,12 @@ struct ActiveSessionView: View {
         return appModel.settings.showPersonalizedBackground ? .white.opacity(0.75) : .secondary
     }
 
+    private var statusBarForeground: Color {
+        if isImmersive { return .white.opacity(0.35) }
+        if appModel.settings.showPersonalizedBackground { return .white.opacity(0.55) }
+        return colorScheme == .dark ? .white.opacity(0.45) : .primary.opacity(0.55)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let isLandscape = geometry.size.width > geometry.size.height
@@ -57,7 +63,7 @@ struct ActiveSessionView: View {
 
                     if isLandscape {
                         HStack(spacing: 32) {
-                            // 问题5：标题加截断，防止长任务名撑坏布局
+                            // 长任务名限制为两行，避免横屏时挤压计时器和控制栏。
                             VStack(spacing: 10) {
                                 Text(session.phase == .rest ? String(localized: "session.resting") : session.taskTitle)
                                     .font(.title2.weight(.semibold))
@@ -78,7 +84,7 @@ struct ActiveSessionView: View {
                                     .animation(disableClockAnimation ? nil : .smooth, value: status.remaining ?? status.elapsed)
 
                                 if !isImmersive, session.phase == .focus {
-                                    // 问题3：进度条宽度按屏幕比例，不硬编码
+                                    // 横屏进度条随可用宽度收缩，兼容小尺寸设备。
                                     progressView(status: status, session: session)
                                         .frame(width: min(220, geometry.size.width * 0.28))
                                 }
@@ -91,10 +97,10 @@ struct ActiveSessionView: View {
                             }
 
                             if !isImmersive {
-                                // 问题4：控制栏在上，暂停状态在下，与竖屏一致
+                                // 横屏保持控制栏在上、暂停状态在下，与竖屏交互一致。
                                 VStack(spacing: 16) {
                                     if revealControls || !appModel.shouldShowMinimalMode {
-                                        // 问题2：横屏使用较小控件尺寸
+                                        // 横屏使用更紧凑的控件尺寸，避免溢出安全区域。
                                         controlPanel(for: session, isLandscape: true)
                                             .transition(.opacity.combined(with: .move(edge: .trailing)))
                                     }
@@ -105,7 +111,7 @@ struct ActiveSessionView: View {
                                 }
                             }
                         }
-                        // 问题1：横屏垂直方向 padding 缩小，避免高度不够
+                        // 横屏垂直留白更小，避免低高度场景内容被裁切。
                         .padding(.horizontal, 24)
                         .padding(.vertical, isLandscape ? 12 : 24)
                         .foregroundStyle(primaryForeground)
@@ -114,7 +120,7 @@ struct ActiveSessionView: View {
                         .transition(.opacity.combined(with: .scale(scale: 1.05)))
                     } else {
                         VStack(spacing: 24) {
-                            // 问题5：竖屏同样加截断保护
+                            // 竖屏同样限制长标题，保持计时器位置稳定。
                             VStack(spacing: 10) {
                                 Text(session.phase == .rest ? String(localized: "session.resting") : session.taskTitle)
                                     .font(.title2.weight(.semibold))
@@ -286,6 +292,7 @@ struct ActiveSessionView: View {
                     .padding(.leading, (isLandscapeForOverlay ? 50 : 20) + burnInOffset.width)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
+                    .animation(nil, value: isImmersive)
             }
         }
         .alert(String(localized: "session.stop.confirm.title"), isPresented: $showStopConfirm) {
@@ -332,7 +339,7 @@ struct ActiveSessionView: View {
                     .font(.system(size: 11, weight: .regular, design: .rounded))
             }
         }
-        .foregroundStyle(.white.opacity(0.35))
+        .foregroundStyle(statusBarForeground)
     }
 
     private func batteryIcon(for level: Float) -> String {

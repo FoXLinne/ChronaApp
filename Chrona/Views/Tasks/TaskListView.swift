@@ -159,6 +159,18 @@ struct TaskListView: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            if appModel.sortedTasks.isEmpty {
+                Button {
+                    guardTaskMutation {
+                        editorRoute = .add()
+                    }
+                } label: {
+                    Label(String(localized: "task.new"), systemImage: "plus")
+                }
+                .buttonStyle(.glass(.regular.tint(.accentColor)))
+                .padding(.top, 4)
+            }
             
             Spacer()
         }

@@ -87,6 +87,43 @@ final class AppViewModel: ObservableObject {
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: today) ?? today
         model.checkInDates = normalizedCheckInDates([today, yesterday, twoDaysAgo])
+
+        // 热力图预览：构造最近 7 天不同时长的模拟专注记录
+        let sampleDurations: [TimeInterval] = [
+            0,
+            15 * 60,
+            45 * 60,
+            90 * 60,
+            120 * 60,
+            30 * 60,
+            5 * 60,
+        ]
+        let fallbackTask = TaskItem(title: "Sample", mode: .pomodoro, order: 0)
+        let baseHour: TimeInterval = 9 * 3600
+
+        var previewSessions: [FocusSessionRecord] = []
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let duration = sampleDurations[offset]
+            guard duration > 0 else { continue }
+            let task = model.tasks.first ?? fallbackTask
+            let startTime = day.addingTimeInterval(baseHour)
+            let endTime = startTime.addingTimeInterval(duration)
+            let session = FocusSessionRecord(
+                id: UUID(),
+                taskID: task.id,
+                taskTitle: task.title,
+                mode: task.mode,
+                startedAt: startTime,
+                endedAt: endTime,
+                focusedDuration: duration,
+                wasCompleted: true,
+                wasAbandoned: false
+            )
+            previewSessions.append(session)
+        }
+        model.sessions = previewSessions.sorted(by: { $0.startedAt > $1.startedAt })
+
         return model
     }
 
@@ -391,6 +428,24 @@ final class AppViewModel: ObservableObject {
         return streak
     }
 
+    var longestCheckInStreak: Int {
+        guard checkInDates.count > 1 else { return checkInDates.count }
+
+        let calendar = Calendar.current
+        let sorted = Set(checkInDates.map { calendar.startOfDay(for: $0) }).sorted()
+        var maxLen = 1
+        var cur = 1
+        for i in 1..<sorted.count {
+            if let diff = calendar.dateComponents([.day], from: sorted[i - 1], to: sorted[i]).day, diff == 1 {
+                cur += 1
+                maxLen = max(maxLen, cur)
+            } else {
+                cur = 1
+            }
+        }
+        return maxLen
+    }
+
     @discardableResult
     func checkInToday() -> Bool {
         let today = Calendar.current.startOfDay(for: .now)
@@ -400,6 +455,30 @@ final class AppViewModel: ObservableObject {
 
         checkInDates = Self.normalizedCheckInDates(checkInDates + [today])
         return true
+    }
+
+    /// 指定月份的每日专注时长聚合，供热力图使用。
+    func dailyFocusDurations(for month: Date) -> [Date: TimeInterval] {
+        let calendar = Calendar.current
+        guard let range = calendar.range(of: .day, in: .month, for: month),
+              let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month))
+        else { return [:] }
+
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        var durations = Dictionary(grouping: sessions.filter { record in
+            record.endedAt >= monthStart && record.endedAt < nextMonthStart
+        }) { record in
+            calendar.startOfDay(for: record.endedAt)
+        }
+            .mapValues { records in
+                records.reduce(0) { $0 + $1.focusedDuration }
+            }
+
+        for day in range {
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { continue }
+            durations[date] = durations[date] ?? 0
+        }
+        return durations
     }
 
     func completedCountToday(for task: TaskItem) -> Int {
@@ -420,8 +499,16 @@ final class AppViewModel: ObservableObject {
 
     func averageDailyDuration() -> TimeInterval {
         guard let earliest = sessions.map(\.startedAt).min() else { return 0 }
-        let dayCount = max(1, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: earliest), to: Calendar.current.startOfDay(for: .now)).day ?? 0)
+        let calendar = Calendar.current
+        let earliestDay = calendar.startOfDay(for: earliest)
+        let today = calendar.startOfDay(for: .now)
+        let elapsedDays = calendar.dateComponents([.day], from: earliestDay, to: today).day ?? 0
+        let dayCount = max(1, elapsedDays + 1)
         return sessions.reduce(0) { $0 + $1.focusedDuration } / Double(dayCount)
+    }
+
+    var totalFocusedDurationAllTime: TimeInterval {
+        sessions.reduce(0) { $0 + $1.focusedDuration }
     }
 
     var futureEvents: [CountdownEvent] {
@@ -437,9 +524,16 @@ final class AppViewModel: ObservableObject {
     }
 
     func taskDistribution(range: TimeRange) -> [TaskDistributionEntry] {
-        let grouped = Dictionary(grouping: filteredSessions(range: range), by: \.taskTitle)
+        let grouped = Dictionary(grouping: filteredSessions(range: range)) { record in
+            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        }
         return grouped.map { key, value in
-            TaskDistributionEntry(id: UUID(), taskTitle: key, duration: value.reduce(0) { $0 + $1.focusedDuration }, colorSeed: key)
+            TaskDistributionEntry(
+                id: key,
+                taskTitle: value.first?.taskTitle ?? "",
+                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                colorSeed: key
+            )
         }
         .sorted(by: { $0.duration > $1.duration })
     }
@@ -447,14 +541,20 @@ final class AppViewModel: ObservableObject {
     func monthlyTrendPoints() -> [DayTrendEntry] {
         let calendar = Calendar.current
         let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
-        let monthEnd = statisticsMonthEnd(for: selectedStatisticsMonth)
-        let dayCount = max(1, calendar.dateComponents([.day], from: monthStart, to: monthEnd).day ?? 0)
+        let dayRange = calendar.range(of: .day, in: .month, for: monthStart) ?? 1..<2
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let durationsByDay = Dictionary(grouping: sessions.filter { record in
+            record.endedAt >= monthStart && record.endedAt < nextMonthStart
+        }) { record in
+            calendar.startOfDay(for: record.endedAt)
+        }
+            .mapValues { records in
+                records.reduce(0) { $0 + $1.focusedDuration }
+            }
 
-        return (0...dayCount).map { dayOffset in
-            let date = calendar.date(byAdding: .day, value: dayOffset, to: monthStart) ?? monthStart
-            let duration = sessions
-                .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
-                .reduce(0) { $0 + $1.focusedDuration }
+        return dayRange.compactMap { day in
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { return nil }
+            let duration = durationsByDay[date] ?? 0
             return DayTrendEntry(date: date, duration: duration)
         }
     }
@@ -480,14 +580,19 @@ final class AppViewModel: ObservableObject {
 
     func cycleStatisticsMonth(forward: Bool) {
         let candidate = Calendar.current.date(byAdding: .month, value: forward ? 1 : -1, to: selectedStatisticsMonth) ?? selectedStatisticsMonth
+        let target: Date
         if forward {
             let currentMonth = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: .now)) ?? .now
-            selectedStatisticsMonth = min(candidate, currentMonth)
+            target = min(candidate, currentMonth)
         } else {
-            selectedStatisticsMonth = candidate
+            target = candidate
         }
-        selectedStatisticsMonth = statisticsMonthStart(for: selectedStatisticsMonth)
-        statisticsTrendScrollDate = defaultStatisticsTrendStartDate(for: selectedStatisticsMonth, anchorDate: selectedStatisticsMonth)
+        let newMonth = statisticsMonthStart(for: target)
+        let newScrollDate = defaultStatisticsTrendStartDate(for: newMonth, anchorDate: newMonth)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedStatisticsMonth = newMonth
+            statisticsTrendScrollDate = newScrollDate
+        }
     }
 
     private func statisticsMonthStart(for date: Date) -> Date {
@@ -592,6 +697,25 @@ final class AppViewModel: ObservableObject {
             isPaused: false,
             pauseDeadline: nil
         )
+    }
+
+    func taskDistribution(on date: Date) -> [TaskDistributionEntry] {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
+        let filtered = sessions.filter { $0.endedAt >= dayStart && $0.endedAt < dayEnd }
+        let grouped = Dictionary(grouping: filtered) { record in
+            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        }
+        return grouped.map { key, value in
+            TaskDistributionEntry(
+                id: key,
+                taskTitle: value.first?.taskTitle ?? "",
+                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                colorSeed: key
+            )
+        }
+        .sorted(by: { $0.duration > $1.duration })
     }
 
     private func filteredSessions(range: TimeRange) -> [FocusSessionRecord] {
@@ -722,7 +846,13 @@ final class AppViewModel: ObservableObject {
 
     private func syncLiveActivity() {
         guard settings.liveActivitiesEnabled else {
+            // 关闭时：清本地引用 + 立即结束所有系统活动
+            let ref = timerActivity
+            timerActivity = nil
             Task {
+                if let activity = ref {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
                 for activity in Activity<TimerActivityAttributes>.activities {
                     await activity.end(nil, dismissalPolicy: .immediate)
                 }
@@ -739,22 +869,33 @@ final class AppViewModel: ObservableObject {
             // 秒表正向计时的参考起点 = 现在 - 已计时长（Widget 自动正向计数，无需 App 推送）
             let elapsedReferenceDate = Date.now.addingTimeInterval(-status.elapsed)
 
-            // 暂停时的冻结显示文字（用于 Widget 显示静态快照，不会随时间自动更新）
+            // 暂停时冻结计时器显示值；有时限暂停交给 Widget 按结束时间自动倒计时。
             let pausedTimerText: String
-            if session.isPaused {
+            let pauseEndTime: Date?
+            if session.isPaused, let pauseDeadline = session.pauseDeadline {
+                pausedTimerText = ""
+                pauseEndTime = pauseDeadline
+            } else if session.isPaused {
+                // 无时限暂停：冻结当前时间值
                 if session.mode == .stopwatch {
                     pausedTimerText = formattedDuration(status.elapsed)
                 } else {
                     pausedTimerText = formattedDuration(status.remaining ?? 0)
                 }
+                pauseEndTime = nil
             } else {
                 pausedTimerText = ""
+                pauseEndTime = nil
             }
 
-            // 阶段标签（暂停时覆盖为「已暂停」）
+            // 阶段标签：有时限暂停 vs 无时限暂停 区分显示
             let phaseLabel: String
             if session.isPaused {
-                phaseLabel = String(localized: "la.paused")
+                if session.pauseDeadline != nil {
+                    phaseLabel = String(localized: "la.paused")
+                } else {
+                    phaseLabel = String(localized: "la.paused.indefinite")
+                }
             } else if session.phase == .focus {
                 phaseLabel = String(localized: "la.phase.focus")
             } else {
@@ -765,37 +906,46 @@ final class AppViewModel: ObservableObject {
                 endTime: endTime,
                 elapsedReferenceDate: elapsedReferenceDate,
                 pausedTimerText: pausedTimerText,
+                pauseEndTime: pauseEndTime,
                 taskTitle: session.taskTitle,
                 phaseLabel: phaseLabel,
                 modeLabel: liveActivityModeLabel(for: session.mode),
                 modeSystemImage: liveActivityModeImage(for: session.mode),
                 isPaused: session.isPaused,
+                isRest: session.phase == .rest,
                 isStopwatch: session.mode == .stopwatch && session.phase == .focus
             )
 
             // staleDate：倒计时/番茄钟在结束时间标记为过期；秒表无限期
             let staleDate = endTime
 
-            if let activity = timerActivity {
+            // 尝试更新已有活动；若本地引用已失效则清除，走新建流程
+            if let activity = timerActivity,
+               Activity<TimerActivityAttributes>.activities.contains(where: { $0.id == activity.id }) {
                 Task {
                     await activity.update(ActivityContent(state: state, staleDate: staleDate))
                 }
             } else {
-                // 恢复/首次启动：先清理所有遗留活动（可能已 stale 无法 update），再新建
+                // 引用已失效或首次创建：清理残留，新建
+                timerActivity = nil
                 let staleActivities = Activity<TimerActivityAttributes>.activities
-                for stale in staleActivities {
-                    Task { await stale.end(nil, dismissalPolicy: .immediate) }
-                }
-
                 let attributes = TimerActivityAttributes(taskID: session.taskID)
-                do {
-                    timerActivity = try Activity.request(
-                        attributes: attributes,
-                        content: ActivityContent(state: state, staleDate: staleDate),
-                        pushType: nil
-                    )
-                } catch {
-                    print("Live Activity 启动失败: \(error.localizedDescription)")
+
+                Task { @MainActor in
+                    for stale in staleActivities {
+                        await stale.end(nil, dismissalPolicy: .immediate)
+                    }
+
+                    guard self.timerActivity == nil, self.activeSession != nil else { return }
+                    do {
+                        self.timerActivity = try Activity.request(
+                            attributes: attributes,
+                            content: ActivityContent(state: state, staleDate: staleDate),
+                            pushType: nil
+                        )
+                    } catch {
+                        print("Live Activity failed to start: \(error.localizedDescription)")
+                    }
                 }
             }
         } else {

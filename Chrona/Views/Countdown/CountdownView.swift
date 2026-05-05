@@ -169,6 +169,16 @@ struct CountdownView: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            if appModel.countdownEvents.isEmpty {
+                Button {
+                    editorRoute = .add()
+                } label: {
+                    Label(String(localized: "countdown.add"), systemImage: "plus")
+                }
+                .buttonStyle(.glass(.regular.tint(.accentColor)))
+                .padding(.top, 4)
+            }
             
             Spacer()
         }

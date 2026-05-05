@@ -21,14 +21,14 @@ struct ChronaWidgetLiveActivity: Widget {
                     ExpandedBottomView(state: context.state)
                 }
             } compactLeading: {
-                Image(systemName: context.state.modeSystemImage)
+                Image(systemName: context.state.compactSystemImage)
                     .font(.caption)
-                    .foregroundStyle(Color("AccentColor"))
+                    .foregroundStyle(context.state.statusColor)
             } compactTrailing: {
                 CompactTrailingView(state: context.state)
             } minimal: {
-                Image(systemName: context.state.isPaused ? "pause.fill" : context.state.modeSystemImage)
-                    .foregroundStyle(context.state.isPaused ? Color.secondary : Color("AccentColor"))
+                Image(systemName: context.state.compactSystemImage)
+                    .foregroundStyle(context.state.statusColor)
             }
             .keylineTint(Color("AccentColor"))
         }
@@ -42,10 +42,9 @@ private struct LockScreenBannerView: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            // 模式图标
-            Image(systemName: state.modeSystemImage)
+            Image(systemName: state.compactSystemImage)
                 .font(.title)
-                .foregroundStyle(Color("AccentColor"))
+                .foregroundStyle(state.statusColor)
                 .frame(width: 36)
 
             // 任务信息
@@ -65,7 +64,7 @@ private struct LockScreenBannerView: View {
                 TimerDisplayView(state: state, font: .system(.title, design: .rounded).monospacedDigit().bold())
                 Text(state.phaseLabel)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(state.statusColor)
             }
         }
         .padding()
@@ -80,9 +79,9 @@ private struct ExpandedLeadingView: View {
     let state: TimerActivityAttributes.ContentState
 
     var body: some View {
-        Image(systemName: state.modeSystemImage)
+        Image(systemName: state.compactSystemImage)
             .font(.title2)
-            .foregroundStyle(Color("AccentColor"))
+            .foregroundStyle(state.statusColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .padding(.leading, 16)
     }
@@ -97,7 +96,7 @@ private struct ExpandedTrailingView: View {
         // 现在这里放状态标签（原本是计时器）
         Text(state.phaseLabel)
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(state.isPaused ? Color.secondary : Color("AccentColor"))
+            .foregroundStyle(state.statusColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .padding(.trailing, 16)
     }
@@ -137,23 +136,18 @@ private struct CompactTrailingView: View {
     let state: TimerActivityAttributes.ContentState
 
     var body: some View {
-        if state.isPaused {
-            Image(systemName: "pause.fill")
-                .foregroundStyle(.secondary)
-        } else {
-            TimerDisplayView(state: state, font: .system(.caption, design: .rounded).monospacedDigit().weight(.semibold))
-                .frame(maxWidth: 46, alignment: .trailing)
-                .minimumScaleFactor(0.8)
-        }
+        TimerDisplayView(state: state, font: .system(.caption, design: .rounded).monospacedDigit().weight(.semibold))
+            .frame(maxWidth: 46, alignment: .trailing)
+            .minimumScaleFactor(0.72)
     }
 }
 
 // MARK: - 计时器显示核心组件
 //
 // 根据 isPaused / isStopwatch 自动选择正确的显示方式：
-// - 暂停中：显示由主 App 计算并冻结的静态文本（pausedTimerText）
+// - 有时限暂停：按 pauseEndTime 自动倒计时；无时限暂停：显示本地化静态文案
 // - 秒表运行中：Text(elapsedReferenceDate, style: .timer) 从过去时间点正向自动计数
-// - 倒计时/番茄钟运行中：Text(endTime, style: .timer) 向未来时间点自动倒计
+// - 倒计时/番茄钟/休息运行中：按 endTime 自动倒计时，到点停在 00:00
 
 private struct TimerDisplayView: View {
     let state: TimerActivityAttributes.ContentState
@@ -162,22 +156,62 @@ private struct TimerDisplayView: View {
     var body: some View {
         Group {
             if state.isPaused {
-                Text(state.pausedTimerText)
-                    .font(font)
+                if let pauseEndTime = state.pauseEndTime {
+                    countdownText(to: pauseEndTime)
+                } else {
+                    Text(state.pausedTimerText)
+                        .font(font)
+                }
             } else if state.isStopwatch {
                 Text(state.elapsedReferenceDate, style: .timer)
                     .font(font)
             } else if let endTime = state.endTime {
-                Text(endTime, style: .timer)
-                    .font(font)
+                countdownText(to: endTime)
             } else {
                 Text("--:--")
                     .font(font)
             }
         }
         .multilineTextAlignment(.trailing)
-        .foregroundStyle(state.isPaused ? Color.secondary : Color("AccentColor"))
+        .foregroundStyle(state.statusColor)
         .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func countdownText(to endTime: Date) -> some View {
+        if endTime <= Date.now {
+            Text("00:00")
+                .font(font)
+        } else {
+            Text(timerInterval: Date.now...endTime, countsDown: true)
+                .font(font)
+        }
+    }
+}
+
+private extension TimerActivityAttributes.ContentState {
+    var compactSystemImage: String {
+        if isPaused {
+            return "pause.fill"
+        }
+
+        if isRest {
+            return "cup.and.saucer.fill"
+        }
+
+        return modeSystemImage
+    }
+
+    var statusColor: Color {
+        if isPaused {
+            return .secondary
+        }
+
+        if isRest {
+            return .blue
+        }
+
+        return Color("AccentColor")
     }
 }
 
@@ -196,10 +230,11 @@ extension TimerActivityAttributes.ContentState {
             elapsedReferenceDate: Date.now.addingTimeInterval(-609),
             pausedTimerText: "",
             taskTitle: "Workout",
-            phaseLabel: "专注中",
-            modeLabel: "倒计时",
+            phaseLabel: String(localized: "la.phase.focus"),
+            modeLabel: String(localized: "mode.countdown"),
             modeSystemImage: "clock",
             isPaused: false,
+            isRest: false,
             isStopwatch: false
         )
     }
@@ -208,12 +243,13 @@ extension TimerActivityAttributes.ContentState {
         .init(
             endTime: Date.now.addingTimeInterval(14 * 60 + 51),
             elapsedReferenceDate: Date.now.addingTimeInterval(-609),
-            pausedTimerText: "14:51",
+            pausedTimerText: String(localized: "session.pause.indefinite"),
             taskTitle: "Workout",
-            phaseLabel: "已暂停",
-            modeLabel: "倒计时",
+            phaseLabel: String(localized: "la.paused"),
+            modeLabel: String(localized: "mode.countdown"),
             modeSystemImage: "clock",
             isPaused: true,
+            isRest: false,
             isStopwatch: false
         )
     }
@@ -224,23 +260,24 @@ extension TimerActivityAttributes.ContentState {
             elapsedReferenceDate: Date.now.addingTimeInterval(-305),
             pausedTimerText: "",
             taskTitle: "Deep Work",
-            phaseLabel: "专注中",
-            modeLabel: "秒表",
+            phaseLabel: String(localized: "la.phase.focus"),
+            modeLabel: String(localized: "mode.stopwatch"),
             modeSystemImage: "stopwatch",
             isPaused: false,
+            isRest: false,
             isStopwatch: true
         )
     }
 }
 
-#Preview("锁屏 – 倒计时", as: .content, using: TimerActivityAttributes.previewFocus) {
+#Preview("Lock Screen - Countdown", as: .content, using: TimerActivityAttributes.previewFocus) {
     ChronaWidgetLiveActivity()
 } contentStates: {
     TimerActivityAttributes.ContentState.previewCountdown
     TimerActivityAttributes.ContentState.previewPaused
 }
 
-#Preview("锁屏 – 秒表", as: .content, using: TimerActivityAttributes.previewFocus) {
+#Preview("Lock Screen - Stopwatch", as: .content, using: TimerActivityAttributes.previewFocus) {
     ChronaWidgetLiveActivity()
 } contentStates: {
     TimerActivityAttributes.ContentState.previewStopwatch

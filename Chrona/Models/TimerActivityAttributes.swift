@@ -20,9 +20,11 @@ struct TimerActivityAttributes: ActivityAttributes {
         var elapsedReferenceDate: Date
 
         /// 暂停时的冻结显示文本（由主 App 格式化后写入）
-        /// 秒表：已计时长；倒计时/番茄钟：剩余时长
-        /// 未暂停时为空字符串
+        /// 无时限暂停显示本地化静态文案，未暂停时为空字符串。
         var pausedTimerText: String
+
+        /// 有时限暂停的结束时间点，供 Widget 在后台自动倒计时。
+        var pauseEndTime: Date?
 
         /// 任务名称
         var taskTitle: String
@@ -41,7 +43,67 @@ struct TimerActivityAttributes: ActivityAttributes {
         /// 当前是否处于暂停状态
         var isPaused: Bool
 
+        /// 当前是否处于休息阶段
+        var isRest: Bool
+
         /// 是否为秒表模式（决定使用 elapsedReferenceDate 还是 endTime 渲染计时器）
         var isStopwatch: Bool
+
+        init(
+            endTime: Date?,
+            elapsedReferenceDate: Date,
+            pausedTimerText: String,
+            pauseEndTime: Date? = nil,
+            taskTitle: String,
+            phaseLabel: String,
+            modeLabel: String,
+            modeSystemImage: String,
+            isPaused: Bool,
+            isRest: Bool = false,
+            isStopwatch: Bool
+        ) {
+            self.endTime = endTime
+            self.elapsedReferenceDate = elapsedReferenceDate
+            self.pausedTimerText = pausedTimerText
+            self.pauseEndTime = pauseEndTime
+            self.taskTitle = taskTitle
+            self.phaseLabel = phaseLabel
+            self.modeLabel = modeLabel
+            self.modeSystemImage = modeSystemImage
+            self.isPaused = isPaused
+            self.isRest = isRest
+            self.isStopwatch = isStopwatch
+        }
+
+        // MARK: - 编码键（确保新增字段不影响旧数据解码）
+
+        private enum CodingKeys: String, CodingKey {
+            case endTime
+            case elapsedReferenceDate
+            case pausedTimerText
+            case pauseEndTime
+            case taskTitle
+            case phaseLabel
+            case modeLabel
+            case modeSystemImage
+            case isPaused
+            case isRest
+            case isStopwatch
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            endTime = try container.decodeIfPresent(Date.self, forKey: .endTime)
+            elapsedReferenceDate = try container.decode(Date.self, forKey: .elapsedReferenceDate)
+            pausedTimerText = try container.decode(String.self, forKey: .pausedTimerText)
+            pauseEndTime = try container.decodeIfPresent(Date.self, forKey: .pauseEndTime)
+            taskTitle = try container.decode(String.self, forKey: .taskTitle)
+            phaseLabel = try container.decode(String.self, forKey: .phaseLabel)
+            modeLabel = try container.decode(String.self, forKey: .modeLabel)
+            modeSystemImage = try container.decode(String.self, forKey: .modeSystemImage)
+            isPaused = try container.decode(Bool.self, forKey: .isPaused)
+            isRest = try container.decodeIfPresent(Bool.self, forKey: .isRest) ?? false
+            isStopwatch = try container.decode(Bool.self, forKey: .isStopwatch)
+        }
     }
 }

@@ -4,8 +4,13 @@ struct DailyCheckInView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
 
+    @State private var heatmapMonth: Date = Calendar.current.date(
+        from: Calendar.current.dateComponents([.year, .month], from: .now)
+    ) ?? .now
+
     var body: some View {
         List {
+            // MARK: - 签到概览
             Section {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 12) {
@@ -36,6 +41,11 @@ struct DailyCheckInView: View {
                             title: String(localized: "checkin.total"),
                             value: String(format: String(localized: "checkin.total.days"), appModel.totalCheckInCount)
                         )
+
+                        statChip(
+                            title: String(localized: "checkin.streak.longest"),
+                            value: String(format: String(localized: "checkin.streak.days"), appModel.longestCheckInStreak)
+                        )
                     }
 
                     Button {
@@ -63,6 +73,17 @@ struct DailyCheckInView: View {
                 .padding(.vertical, 4)
             }
 
+            // MARK: - 专注热力图
+            Section(String(localized: "checkin.heatmap.title")) {
+                FocusHeatmapView(
+                    month: $heatmapMonth,
+                    durations: appModel.dailyFocusDurations(for: heatmapMonth),
+                    checkInDates: appModel.checkInDates,
+                    showCheckInMarks: true
+                )
+            }
+
+            // MARK: - 签到历史
             Section(String(localized: "checkin.history")) {
                 if appModel.checkInDates.isEmpty {
                     Text(String(localized: "checkin.history.empty"))
@@ -91,12 +112,17 @@ struct DailyCheckInView: View {
             }
         }
     }
+}
 
-    private func statChip(title: String, value: String) -> some View {
+// MARK: - 签到通用组件
+private extension DailyCheckInView {
+    func statChip(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             Text(value)
                 .font(.subheadline.weight(.semibold))
@@ -108,7 +134,7 @@ struct DailyCheckInView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func relativeLabel(for date: Date) -> String {
+    func relativeLabel(for date: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
             return String(localized: "checkin.history.today")
