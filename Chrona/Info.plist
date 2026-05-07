@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>chrona</string>
+			</array>
+		</dict>
+	</array>
 	<!-- 开启文件共享，使 Documents 目录在 iOS 文件 App 中可见 -->
 	<key>UIFileSharingEnabled</key>
 	<true/>

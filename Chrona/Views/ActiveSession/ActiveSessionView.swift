@@ -11,7 +11,6 @@ struct ActiveSessionView: View {
     @State private var disableClockAnimation = false
     @State private var showSettings = false
     @State private var timerDisplayDraft = AppSettings.default
-    @State private var currentTime = Date.now
     @State private var batteryLevel: Float = -1
     @State private var isLandscapeForOverlay = false
     @State private var burnInOffset = CGSize.zero
@@ -43,7 +42,7 @@ struct ActiveSessionView: View {
 
             ZStack {
                 if appModel.settings.showPersonalizedBackground {
-                    AppBackground(seed: appModel.activeTask?.backgroundName ?? "sunset")
+                    AppBackground(seed: appModel.activeTask?.backgroundName ?? ThemePalette.defaultSeed)
                 } else {
                     AppBackgroundLite()
                 }
@@ -69,7 +68,7 @@ struct ActiveSessionView: View {
                                     .font(.title2.weight(.semibold))
                                     .lineLimit(2)
                                     .truncationMode(.tail)
-                                Text(session.mode == .pomodoro ? String(localized: "mode.pomodoro") : session.mode == .stopwatch ? String(localized: "mode.stopwatch") : String(localized: "mode.countdown"))
+                                Text(session.mode.label)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -126,7 +125,7 @@ struct ActiveSessionView: View {
                                     .font(.title2.weight(.semibold))
                                     .lineLimit(2)
                                     .truncationMode(.tail)
-                                Text(session.mode == .pomodoro ? String(localized: "mode.pomodoro") : session.mode == .stopwatch ? String(localized: "mode.stopwatch") : String(localized: "mode.countdown"))
+                                Text(session.mode.label)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -182,7 +181,6 @@ struct ActiveSessionView: View {
             scheduleAutoImmersion()
         }
         .onAppear {
-            ScreenAwakeController.updateRefreshRate(isImmersive: isImmersive)
             appModel.setActiveImmersiveChromeHidden(isImmersive)
             disableClockAnimation = isImmersive
             UIDevice.current.isBatteryMonitoringEnabled = true
@@ -239,11 +237,9 @@ struct ActiveSessionView: View {
                 autoHideTask?.cancel()
             }
             
-            ScreenAwakeController.updateRefreshRate(isImmersive: appModel.shouldShowMinimalMode && !revealControls)
             appModel.setActiveImmersiveChromeHidden(appModel.shouldShowMinimalMode && !revealControls)
         }
         .onChange(of: revealControls) { _, _ in
-            ScreenAwakeController.updateRefreshRate(isImmersive: appModel.shouldShowMinimalMode && !revealControls)
             appModel.setActiveImmersiveChromeHidden(appModel.shouldShowMinimalMode && !revealControls)
             if revealControls {
                 scheduleAutoImmersion()
@@ -262,10 +258,6 @@ struct ActiveSessionView: View {
             }
         }
 
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
-            currentTime = time
-            if batteryLevel < 0 { batteryLevel = UIDevice.current.batteryLevel }
-        }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
             batteryLevel = UIDevice.current.batteryLevel
         }
@@ -279,7 +271,6 @@ struct ActiveSessionView: View {
 
         .onDisappear {
             autoHideTask?.cancel()
-            ScreenAwakeController.updateRefreshRate(isImmersive: false)
             appModel.setActiveImmersiveChromeHidden(false)
             UIDevice.current.isBatteryMonitoringEnabled = false
         }
@@ -325,7 +316,7 @@ struct ActiveSessionView: View {
 
     private var statusBarContent: some View {
         HStack(spacing: 5) {
-            Text(currentTime.formatted(.dateTime.hour().minute()))
+            Text(appModel.now.formatted(.dateTime.hour().minute()))
                 .font(.system(size: 11, weight: .regular, design: .rounded))
 
             Text(String(localized: "common.separator"))

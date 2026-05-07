@@ -13,11 +13,4 @@ enum ScreenAwakeController {
             #endif
         }
     }
-
-    static func updateRefreshRate(isImmersive: Bool) {
-        DispatchQueue.main.async {
-            // Keep this as a no-op on SDKs that do not expose a stable app-level refresh-rate API.
-            _ = isImmersive
-        }
-    }
 }

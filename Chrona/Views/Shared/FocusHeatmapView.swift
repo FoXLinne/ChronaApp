@@ -260,9 +260,11 @@ private extension FocusHeatmapView {
                 .foregroundStyle(.secondary)
 
             legendSwatch(color: heatmapColor(for: 0))
-            legendSwatch(color: heatmapColor(for: 15 * 60))
-            legendSwatch(color: heatmapColor(for: 45 * 60))
-            legendSwatch(color: heatmapColor(for: 90 * 60))
+            legendSwatch(color: heatmapColor(for: 30 * 60))
+            legendSwatch(color: heatmapColor(for: TimeInterval(1.5 * 3600)))
+            legendSwatch(color: heatmapColor(for: TimeInterval(2.5 * 3600)))
+            legendSwatch(color: heatmapColor(for: 4 * 3600))
+            legendSwatch(color: heatmapColor(for: 6 * 3600))
 
             Text(String(localized: "checkin.heatmap.legend.long"))
                 .font(.caption2)
@@ -285,8 +287,13 @@ private extension FocusHeatmapView {
             return Color(uiColor: .secondarySystemGroupedBackground)
         }
         let hours = duration / 3600
-        let ratio = min(max(hours / 2.0, 0.05), 1.0)
-        return Color.accentColor.opacity(0.15 + ratio * 0.7)
+        switch hours {
+        case 0..<1:  return Color.accentColor.opacity(0.18)
+        case 1..<2:  return Color.accentColor.opacity(0.33)
+        case 2..<3:  return Color.accentColor.opacity(0.50)
+        case 3..<5:  return Color.accentColor.opacity(0.70)
+        default:      return Color.accentColor // 全饱和强调色
+        }
     }
 }
 

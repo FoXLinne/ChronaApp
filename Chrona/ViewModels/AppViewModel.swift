@@ -1,8 +1,10 @@
 import Combine
 import Foundation
+import os
 import SwiftUI
 import ActivityKit
 import UniformTypeIdentifiers
+import WidgetKit
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -27,13 +29,13 @@ final class AppViewModel: ObservableObject {
     @Published var isActiveImmersiveChromeHidden = false
 
     private var timerActivity: Activity<TimerActivityAttributes>?
-    private let persistence = PersistenceService()
-    private let notifications = NotificationService()
+    private let persistence = Persistence()
+    private let notifications = Notifications()
+    private let logger = Logger(subsystem: "top.kaedekr.chrona", category: "AppViewModel")
     private var ticker: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
     private var noticeTask: Task<Void, Never>?
     private let isPreviewMode: Bool
-    private let statisticsTrendVisibleDays = 7
     private var activeTabEnteredAt: Date? = .now
 
     init(forcePreviewMode: Bool = false) {
@@ -41,19 +43,17 @@ final class AppViewModel: ObservableObject {
         isPreviewMode = forcePreviewMode || runningForPreview
 
         if isPreviewMode {
-            let snapshot = AppSnapshot.default
-            tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
-            sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
-            countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
-            profile = snapshot.profile
-            settings = snapshot.settings
-            checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
-            lastTaskID = snapshot.lastTaskID
-            activeSession = snapshot.activeSession
-            quickLaunchTaskID = snapshot.lastTaskID
+            let defaultData = DataStore.default
+            tasks = defaultData.tasks.sorted(by: { $0.order < $1.order })
+            sessions = defaultData.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+            countdownEvents = defaultData.countdownEvents.sorted(by: { $0.date < $1.date })
+            profile = defaultData.profile
+            settings = AppSettings.default
+            checkInDates = CheckIn.normalizedDates(defaultData.checkInDates)
+            lastTaskID = defaultData.lastTaskID
+            activeSession = defaultData.activeSession
+            quickLaunchTaskID = defaultData.lastTaskID
         } else {
-            _ = persistence.migrateIfNeeded()
-
             let dataStore = persistence.loadData()
             let storedSettings = persistence.loadSettings()
 
@@ -62,7 +62,7 @@ final class AppViewModel: ObservableObject {
             countdownEvents = dataStore.countdownEvents.sorted(by: { $0.date < $1.date })
             profile = dataStore.profile
             settings = storedSettings
-            checkInDates = Self.normalizedCheckInDates(dataStore.checkInDates ?? [])
+            checkInDates = CheckIn.normalizedDates(dataStore.checkInDates)
             lastTaskID = dataStore.lastTaskID
             activeSession = dataStore.activeSession
             quickLaunchTaskID = dataStore.lastTaskID
@@ -78,6 +78,7 @@ final class AppViewModel: ObservableObject {
         refreshDerivedState()
         reconcileActiveSessionIfNeeded()
         resetStatisticsTrendToToday()
+        refreshCheckInCache()
     }
 
     static func previewModel() -> AppViewModel {
@@ -86,7 +87,7 @@ final class AppViewModel: ObservableObject {
         let today = calendar.startOfDay(for: .now)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: today) ?? today
-        model.checkInDates = normalizedCheckInDates([today, yesterday, twoDaysAgo])
+        model.checkInDates = CheckIn.normalizedDates([today, yesterday, twoDaysAgo])
 
         // 热力图预览：构造最近 7 天不同时长的模拟专注记录
         let sampleDurations: [TimeInterval] = [
@@ -126,6 +127,8 @@ final class AppViewModel: ObservableObject {
 
         return model
     }
+
+    // MARK: - 计算属性
 
     var sortedTasks: [TaskItem] {
         tasks.sorted(by: { $0.order < $1.order })
@@ -173,82 +176,92 @@ final class AppViewModel: ObservableObject {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
+    // MARK: - 任务管理（委托 TaskManager）
+
     func createTask(title: String, mode: FocusMode, presetID: String, countdownDuration: TimeInterval, backgroundName: String) {
-        let task = TaskItem(
+        tasks = TaskManager.createTask(
             title: title,
             mode: mode,
-            pomodoroPresetID: presetID,
+            presetID: presetID,
             countdownDuration: countdownDuration,
             backgroundName: backgroundName,
-            order: tasks.count
+            in: tasks
         )
-        tasks.append(task)
-        reindexTasks()
     }
 
     func updateTask(_ task: TaskItem) {
-        guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
-        tasks[index] = task
-        reindexTasks()
+        tasks = TaskManager.updateTask(task, in: tasks)
     }
 
-    /// 检查任务名是否冲突（排除当前正在编辑的任务 ID）
     func isTaskNameDuplicate(_ title: String, excluding id: UUID?) -> Bool {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return tasks.contains { $0.id != id && $0.title.lowercased() == trimmed.lowercased() }
+        TaskManager.isTaskNameDuplicate(title, excluding: id, in: tasks)
     }
 
     func deleteTasks(at offsets: IndexSet) {
-        let ids = offsets.map { sortedTasks[$0].id }
-        tasks.removeAll(where: { ids.contains($0.id) })
-        reindexTasks()
+        tasks = TaskManager.deleteTasks(at: offsets, sortedTasks: sortedTasks, in: tasks)
     }
 
     func deleteTask(id: UUID) {
-        tasks.removeAll(where: { $0.id == id })
-        reindexTasks()
+        tasks = TaskManager.deleteTask(id: id, in: tasks)
     }
 
     func moveTasks(from source: IndexSet, to destination: Int) {
-        var reordered = sortedTasks
-        reordered.move(fromOffsets: source, toOffset: destination)
-        for index in reordered.indices {
-            reordered[index].order = index
-        }
-        tasks = reordered
+        tasks = TaskManager.moveTasks(from: source, to: destination, sortedTasks: sortedTasks)
     }
 
+    func completedCountToday(for task: TaskItem) -> Int {
+        TaskManager.completedCountToday(for: task, in: sessions)
+    }
+
+    // MARK: - 倒数日管理（委托 CountdownManager）
+
     func addCountdownEvent(title: String, date: Date, includesTime: Bool = false, notificationEnabled: Bool = false) {
-        let event = CountdownEvent(
+        countdownEvents = CountdownManager.addEvent(
             title: title,
-            date: normalizedCountdownDate(date, includesTime: includesTime),
+            date: date,
             includesTime: includesTime,
-            notificationEnabled: notificationEnabled
+            notificationEnabled: notificationEnabled,
+            in: countdownEvents
         )
-        countdownEvents.append(event)
-        countdownEvents.sort(by: { $0.date < $1.date })
-        syncCountdownReminder(for: event)
+        if let last = countdownEvents.last {
+            syncCountdownReminder(for: last)
+        }
+        syncWidgetData()
     }
 
     func updateCountdownEvent(_ event: CountdownEvent) {
-        guard let index = countdownEvents.firstIndex(where: { $0.id == event.id }) else { return }
-        var copy = event
-        copy.date = normalizedCountdownDate(copy.date, includesTime: copy.includesTime)
-        countdownEvents[index] = copy
-        countdownEvents.sort(by: { $0.date < $1.date })
-        syncCountdownReminder(for: copy)
+        countdownEvents = CountdownManager.updateEvent(event, in: countdownEvents)
+        if let updated = countdownEvents.first(where: { $0.id == event.id }) {
+            syncCountdownReminder(for: updated)
+        }
+        syncWidgetData()
     }
 
     func deleteCountdownEvent(id: UUID) {
-        countdownEvents.removeAll(where: { $0.id == id })
+        countdownEvents = CountdownManager.deleteEvent(id: id, in: countdownEvents)
         notifications.cancelCountdownReminder(eventID: id)
+        syncWidgetData()
     }
 
     func deleteCountdownEvents(at offsets: IndexSet, from future: Bool) {
         let target = future ? futureEvents : pastEvents
-        let ids = offsets.map { target[$0].id }
-        countdownEvents.removeAll(where: { ids.contains($0.id) })
+        countdownEvents = CountdownManager.deleteEvents(at: offsets, from: target, in: countdownEvents)
+        syncWidgetData()
     }
+
+    var futureEvents: [CountdownEvent] {
+        CountdownManager.futureEvents(in: countdownEvents, now: now)
+    }
+
+    var todayEvents: [CountdownEvent] {
+        CountdownManager.todayEvents(in: countdownEvents)
+    }
+
+    var pastEvents: [CountdownEvent] {
+        CountdownManager.pastEvents(in: countdownEvents, now: now)
+    }
+
+    // MARK: - 会话管理（委托 SessionManager）
 
     @discardableResult
     func startTask(_ task: TaskItem) -> Bool {
@@ -258,29 +271,11 @@ final class AppViewModel: ObservableObject {
             return false
         }
 
-        let focusDuration: TimeInterval?
-        switch task.mode {
-        case .pomodoro:
-            focusDuration = task.pomodoroPreset.workDuration
-        case .countdown:
-            focusDuration = task.countdownDuration
-        case .stopwatch:
-            focusDuration = nil
+        guard let snapshot = SessionManager.startTask(task, activeSession: activeSession, now: now) else {
+            return false
         }
 
-        activeSession = ActiveSessionSnapshot(
-            taskID: task.id,
-            taskTitle: task.title,
-            mode: task.mode,
-            phase: .focus,
-            startedAt: .now,
-            focusDuration: focusDuration,
-            restDuration: nil,
-            pausedAt: nil,
-            pausedAccumulated: 0,
-            isPaused: false,
-            pauseDeadline: nil
-        )
+        activeSession = snapshot
         lastTaskID = task.id
         quickLaunchTaskID = task.id
         selectedTab = .active
@@ -317,323 +312,176 @@ final class AppViewModel: ObservableObject {
     }
 
     func stopConsequence(forceAbandon: Bool = false) -> StopConsequence {
-        guard let session = activeSession, session.phase == .focus else {
-            return .willRecord
-        }
-
-        let status = TimerEngine.status(for: session, now: now)
-        let focusDuration = status.elapsed
-        let isQualified = focusDuration >= 5
-        guard isQualified else {
-            return .discardTooShort
-        }
-
-        let reachedTarget = session.focusDuration.map { focusDuration >= $0 } ?? true
-        let isCompleted = !settings.advancedDisallowEarlyFinish || reachedTarget
-        let shouldAbandon = forceAbandon || (settings.advancedDisallowEarlyFinish && !isCompleted)
-        return shouldAbandon ? .discardAdvancedRule : .willRecord
+        SessionManager.stopConsequence(
+            activeSession: activeSession,
+            now: now,
+            advancedDisallowEarlyFinish: settings.advancedDisallowEarlyFinish
+        )
     }
 
     func pauseOrResumeActiveSession() {
-        guard var session = activeSession else { return }
-        guard session.phase == .focus, session.mode != .pomodoro else { return }
-        guard !settings.advancedDisallowPause else { return }
-
-        if session.isPaused {
-            let resumeMoment = min(Date.now, session.pauseDeadline ?? Date.now)
-            let pausedDuration = resumeMoment.timeIntervalSince(session.pausedAt ?? resumeMoment)
-            session.pausedAccumulated += pausedDuration
-            session.pausedAt = nil
-            session.isPaused = false
-            session.pauseDeadline = nil
-            activeTabEnteredAt = selectedTab == .active ? .now : nil
-            showNotice(String(localized: "session.pause.resumed"))
-        } else {
-            session.isPaused = true
-            session.pausedAt = .now
-            activeTabEnteredAt = nil
-            if let limit = settings.stopwatchPauseLimitMinutes {
-                session.pauseDeadline = Calendar.current.date(byAdding: .minute, value: limit, to: .now)
-                showNotice(String(format: String(localized: "session.pause.entered.limit"), limit))
-            } else {
-                showNotice(String(localized: "session.pause.entered"))
-            }
+        let result = SessionManager.togglePause(
+            activeSession: activeSession,
+            settings: settings,
+            selectedTab: selectedTab,
+            now: now
+        )
+        guard let snapshot = result.snapshot else { return }
+        activeSession = snapshot
+        if let notice = result.notice {
+            showNotice(notice)
         }
-        activeSession = session
+        if result.resetImmersiveClock {
+            activeTabEnteredAt = .now
+        }
+        if !result.resetImmersiveClock && activeSession?.isPaused == true {
+            activeTabEnteredAt = nil
+        }
         refreshDerivedState(shouldSyncActivity: true)
     }
 
     func stopActiveSession(forceAbandon: Bool = false) {
-        guard let session = activeSession else { return }
-        let status = TimerEngine.status(for: session, now: now)
-        let focusDuration = session.phase == .focus ? status.elapsed : 0
-        let isQualified = focusDuration >= 5
-        let reachedTarget = session.phase == .focus && (session.focusDuration.map { focusDuration >= $0 } ?? isQualified)
-        let isCompleted = session.phase == .focus && isQualified && (!settings.advancedDisallowEarlyFinish || reachedTarget)
-        let isAbandoned = forceAbandon || (settings.advancedDisallowEarlyFinish && !isCompleted)
+        let result = SessionManager.stopActiveSession(
+            activeSession: activeSession,
+            now: now,
+            settings: settings,
+            autoMoveCompletedTaskToTop: settings.autoMoveCompletedTaskToTop
+        )
 
-        if session.phase == .focus, !isQualified {
-            showNotice(String(format: String(localized: "session.discard.short"), Int(focusDuration.rounded())))
-        } else if session.phase == .focus, isAbandoned {
-            showNotice(String(localized: "session.discard.advanced"))
+        if let notice = result.notice {
+            showNotice(notice)
         }
 
-        if session.phase == .focus, isQualified, !isAbandoned {
-            let recordedDuration = min(focusDuration, session.focusDuration ?? focusDuration)
-            if !hasRecordedSession(session: session, duration: recordedDuration, completed: isCompleted) {
-                recordSession(session: session, duration: recordedDuration, completed: isCompleted)
+        if let record = result.recordedSession,
+           let session = activeSession,
+           !SessionManager.hasRecordedSession(sessions: sessions, session: session, duration: record.focusedDuration, completed: record.wasCompleted) {
+            sessions.insert(record, at: 0)
+            // 自动置顶已完成的任务
+            if settings.autoMoveCompletedTaskToTop, let taskID = session.taskID, let index = tasks.firstIndex(where: { $0.id == taskID }) {
+                var moved = tasks.remove(at: index)
+                moved.order = 0
+                tasks.insert(moved, at: 0)
+                tasks = TaskManager.moveTasks(from: IndexSet(integer: 0), to: 0, sortedTasks: sortedTasks)
             }
         }
 
-        if session.phase == .focus {
-            beginRestIfNeeded(after: session)
+        if result.shouldBeginRest {
+            if let session = activeSession, let restDur = SessionManager.restDuration(after: session, activeTask: activeTask, restDurationMinutes: settings.restDurationMinutes) {
+                activeSession = SessionManager.makeRestSnapshot(after: session, restDuration: restDur)
+            } else {
+                activeSession = nil
+            }
         } else {
             activeSession = nil
         }
+
         activeTabEnteredAt = nil
         refreshDerivedState(shouldSyncActivity: true)
         persistState()
     }
 
     func endRest() {
-        activeSession = nil
+        activeSession = SessionManager.endRest()
         activeTabEnteredAt = nil
         refreshDerivedState(shouldSyncActivity: true)
         persistState()
     }
 
+    // MARK: - 签到管理（委托 CheckIn，结果缓存）
+
+    /// 缓存的签到计算结果，仅当 checkInDates 变化时重算
+    private var cachedCheckInStreak: Int = 0
+    private var cachedLongestCheckInStreak: Int = 0
+
     var hasCheckedInToday: Bool {
-        checkInDates.contains(where: { Calendar.current.isDateInToday($0) })
+        CheckIn.hasCheckedInToday(in: checkInDates)
     }
 
     var totalCheckInCount: Int {
-        checkInDates.count
+        CheckIn.totalCheckInCount(in: checkInDates)
     }
 
     var checkInStreak: Int {
-        guard !checkInDates.isEmpty else { return 0 }
-
-        let calendar = Calendar.current
-        let daySet = Set(checkInDates.map { calendar.startOfDay(for: $0) })
-
-        var streak = 0
-        var cursor = calendar.startOfDay(for: .now)
-
-        while daySet.contains(cursor) {
-            streak += 1
-            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
-            cursor = previous
-        }
-
-        return streak
+        cachedCheckInStreak
     }
 
     var longestCheckInStreak: Int {
-        guard checkInDates.count > 1 else { return checkInDates.count }
+        cachedLongestCheckInStreak
+    }
 
-        let calendar = Calendar.current
-        let sorted = Set(checkInDates.map { calendar.startOfDay(for: $0) }).sorted()
-        var maxLen = 1
-        var cur = 1
-        for i in 1..<sorted.count {
-            if let diff = calendar.dateComponents([.day], from: sorted[i - 1], to: sorted[i]).day, diff == 1 {
-                cur += 1
-                maxLen = max(maxLen, cur)
-            } else {
-                cur = 1
-            }
-        }
-        return maxLen
+    private func refreshCheckInCache() {
+        cachedCheckInStreak = CheckIn.checkInStreak(in: checkInDates)
+        cachedLongestCheckInStreak = CheckIn.longestCheckInStreak(in: checkInDates)
     }
 
     @discardableResult
     func checkInToday() -> Bool {
-        let today = Calendar.current.startOfDay(for: .now)
-        guard !checkInDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: today) }) else {
-            return false
-        }
-
-        checkInDates = Self.normalizedCheckInDates(checkInDates + [today])
-        return true
+        let result = CheckIn.checkInToday(in: checkInDates)
+        checkInDates = result.dates
+        refreshCheckInCache()
+        return result.success
     }
 
-    /// 指定月份的每日专注时长聚合，供热力图使用。
+    // MARK: - 统计数据（委托 Statistics）
+
     func dailyFocusDurations(for month: Date) -> [Date: TimeInterval] {
-        let calendar = Calendar.current
-        guard let range = calendar.range(of: .day, in: .month, for: month),
-              let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month))
-        else { return [:] }
-
-        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
-        var durations = Dictionary(grouping: sessions.filter { record in
-            record.endedAt >= monthStart && record.endedAt < nextMonthStart
-        }) { record in
-            calendar.startOfDay(for: record.endedAt)
-        }
-            .mapValues { records in
-                records.reduce(0) { $0 + $1.focusedDuration }
-            }
-
-        for day in range {
-            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { continue }
-            durations[date] = durations[date] ?? 0
-        }
-        return durations
-    }
-
-    func completedCountToday(for task: TaskItem) -> Int {
-        sessions.filter {
-            $0.taskID == task.id &&
-            $0.wasCompleted &&
-            Calendar.current.isDateInToday($0.endedAt)
-        }.count
+        Statistics.dailyFocusDurations(sessions: sessions, for: month)
     }
 
     func totalFocusedDuration(for range: TimeRange) -> TimeInterval {
-        filteredSessions(range: range).reduce(0) { $0 + $1.focusedDuration }
+        Statistics.totalFocusedDuration(sessions: sessions, range: range)
     }
 
     func totalFocusedCount(for range: TimeRange) -> Int {
-        filteredSessions(range: range).count
+        Statistics.totalFocusedCount(sessions: sessions, range: range)
     }
 
     func averageDailyDuration() -> TimeInterval {
-        guard let earliest = sessions.map(\.startedAt).min() else { return 0 }
-        let calendar = Calendar.current
-        let earliestDay = calendar.startOfDay(for: earliest)
-        let today = calendar.startOfDay(for: .now)
-        let elapsedDays = calendar.dateComponents([.day], from: earliestDay, to: today).day ?? 0
-        let dayCount = max(1, elapsedDays + 1)
-        return sessions.reduce(0) { $0 + $1.focusedDuration } / Double(dayCount)
+        Statistics.averageDailyDuration(sessions: sessions)
     }
 
     var totalFocusedDurationAllTime: TimeInterval {
-        sessions.reduce(0) { $0 + $1.focusedDuration }
-    }
-
-    var futureEvents: [CountdownEvent] {
-        countdownEvents.filter { $0.date >= Calendar.current.startOfDay(for: .now) && !Calendar.current.isDateInToday($0.date) }
-    }
-
-    var todayEvents: [CountdownEvent] {
-        countdownEvents.filter { Calendar.current.isDateInToday($0.date) }
-    }
-
-    var pastEvents: [CountdownEvent] {
-        countdownEvents.filter { $0.date < Calendar.current.startOfDay(for: .now) && !Calendar.current.isDateInToday($0.date) }.sorted(by: { $0.date > $1.date })
+        Statistics.totalFocusedDurationAllTime(sessions: sessions)
     }
 
     func taskDistribution(range: TimeRange) -> [TaskDistributionEntry] {
-        let grouped = Dictionary(grouping: filteredSessions(range: range)) { record in
-            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
-        }
-        return grouped.map { key, value in
-            TaskDistributionEntry(
-                id: key,
-                taskTitle: value.first?.taskTitle ?? "",
-                duration: value.reduce(0) { $0 + $1.focusedDuration },
-                colorSeed: key
-            )
-        }
-        .sorted(by: { $0.duration > $1.duration })
+        Statistics.taskDistribution(sessions: sessions, range: range)
+    }
+
+    func taskDistribution(on date: Date) -> [TaskDistributionEntry] {
+        Statistics.taskDistribution(sessions: sessions, on: date)
     }
 
     func monthlyTrendPoints() -> [DayTrendEntry] {
-        let calendar = Calendar.current
-        let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
-        let dayRange = calendar.range(of: .day, in: .month, for: monthStart) ?? 1..<2
-        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
-        let durationsByDay = Dictionary(grouping: sessions.filter { record in
-            record.endedAt >= monthStart && record.endedAt < nextMonthStart
-        }) { record in
-            calendar.startOfDay(for: record.endedAt)
-        }
-            .mapValues { records in
-                records.reduce(0) { $0 + $1.focusedDuration }
-            }
-
-        return dayRange.compactMap { day in
-            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { return nil }
-            let duration = durationsByDay[date] ?? 0
-            return DayTrendEntry(date: date, duration: duration)
-        }
+        Statistics.monthlyTrendPoints(sessions: sessions, selectedMonth: selectedStatisticsMonth)
     }
 
     func statisticsTrendDomain() -> ClosedRange<Date> {
-        let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
-        let monthEnd = statisticsMonthEnd(for: selectedStatisticsMonth)
-        return monthStart...monthEnd
+        Statistics.trendDomain(selectedMonth: selectedStatisticsMonth)
     }
 
     var statisticsTrendVisibleLength: TimeInterval {
-        TimeInterval((statisticsTrendVisibleDays - 1) * 24 * 60 * 60)
+        Statistics.trendVisibleLength()
     }
 
     func updateStatisticsTrendScrollDate(_ candidate: Date) {
-        statisticsTrendScrollDate = clampedStatisticsTrendStartDate(candidate, month: selectedStatisticsMonth)
+        statisticsTrendScrollDate = Statistics.clampedTrendStartDate(candidate, month: selectedStatisticsMonth)
     }
 
     func resetStatisticsTrendToToday() {
-        selectedStatisticsMonth = statisticsMonthStart(for: .now)
-        statisticsTrendScrollDate = defaultStatisticsTrendStartDate(for: selectedStatisticsMonth, anchorDate: .now)
+        selectedStatisticsMonth = Statistics.monthStartDate(for: .now)
+        statisticsTrendScrollDate = Statistics.defaultTrendStartDate(for: selectedStatisticsMonth, anchorDate: .now)
     }
 
     func cycleStatisticsMonth(forward: Bool) {
-        let candidate = Calendar.current.date(byAdding: .month, value: forward ? 1 : -1, to: selectedStatisticsMonth) ?? selectedStatisticsMonth
-        let target: Date
-        if forward {
-            let currentMonth = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: .now)) ?? .now
-            target = min(candidate, currentMonth)
-        } else {
-            target = candidate
-        }
-        let newMonth = statisticsMonthStart(for: target)
-        let newScrollDate = defaultStatisticsTrendStartDate(for: newMonth, anchorDate: newMonth)
+        let result = Statistics.cycleMonth(selectedMonth: selectedStatisticsMonth, forward: forward)
         withAnimation(.easeInOut(duration: 0.2)) {
-            selectedStatisticsMonth = newMonth
-            statisticsTrendScrollDate = newScrollDate
+            selectedStatisticsMonth = result.month
+            statisticsTrendScrollDate = result.scrollDate
         }
     }
 
-    private func statisticsMonthStart(for date: Date) -> Date {
-        Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
-    }
-
-    private func statisticsMonthEnd(for date: Date) -> Date {
-        let calendar = Calendar.current
-        let monthStart = statisticsMonthStart(for: date)
-        guard let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart),
-              let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonthStart)
-        else {
-            return monthStart
-        }
-        return calendar.startOfDay(for: monthEnd)
-    }
-
-    private func maxStatisticsTrendStartDate(for month: Date) -> Date {
-        let calendar = Calendar.current
-        let monthEnd = statisticsMonthEnd(for: month)
-        let candidate = calendar.date(byAdding: .day, value: -(statisticsTrendVisibleDays - 1), to: monthEnd) ?? monthEnd
-        let monthStart = statisticsMonthStart(for: month)
-        return max(candidate, monthStart)
-    }
-
-    private func clampedStatisticsTrendStartDate(_ proposed: Date, month: Date) -> Date {
-        let calendar = Calendar.current
-        let normalized = calendar.startOfDay(for: proposed)
-        let monthStart = statisticsMonthStart(for: month)
-        let monthMax = maxStatisticsTrendStartDate(for: month)
-        if normalized < monthStart { return monthStart }
-        if normalized > monthMax { return monthMax }
-        return normalized
-    }
-
-    private func defaultStatisticsTrendStartDate(for month: Date, anchorDate: Date) -> Date {
-        let calendar = Calendar.current
-        let anchor = calendar.startOfDay(for: anchorDate)
-        let candidate = calendar.date(byAdding: .day, value: -(statisticsTrendVisibleDays - 1), to: anchor) ?? anchor
-        return clampedStatisticsTrendStartDate(candidate, month: month)
-    }
+    // MARK: - 主题
 
     func applyTheme() -> ColorScheme? {
         switch settings.theme {
@@ -643,100 +491,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func reindexTasks() {
-        tasks = sortedTasks.enumerated().map { index, item in
-            var copy = item
-            copy.order = index
-            return copy
-        }
-    }
-
-    private func recordSession(session: ActiveSessionSnapshot, duration: TimeInterval, completed: Bool) {
-        // Sessions shorter than 5 seconds are filtered before reaching this method.
-        let record = FocusSessionRecord(
-            taskID: session.taskID,
-            taskTitle: session.taskTitle,
-            mode: session.mode,
-            startedAt: session.startedAt,
-            endedAt: now,
-            focusedDuration: duration,
-            wasCompleted: completed,
-            wasAbandoned: !completed && settings.advancedDisallowEarlyFinish
-        )
-        sessions.insert(record, at: 0)
-        if settings.autoMoveCompletedTaskToTop, let taskID = session.taskID, let index = tasks.firstIndex(where: { $0.id == taskID }) {
-            var moved = tasks.remove(at: index)
-            moved.order = 0
-            tasks.insert(moved, at: 0)
-            reindexTasks()
-        }
-    }
-
-    private func beginRestIfNeeded(after session: ActiveSessionSnapshot) {
-        let restDuration: TimeInterval
-        if session.mode == .pomodoro, let task = activeTask {
-            restDuration = task.pomodoroPreset.breakDuration
-        } else {
-            guard settings.restDurationMinutes > 0 else {
-                activeSession = nil
-                return
-            }
-            restDuration = Double(settings.restDurationMinutes * 60)
-        }
-
-        activeSession = ActiveSessionSnapshot(
-            taskID: session.taskID,
-            taskTitle: session.taskTitle,
-            mode: session.mode,
-            phase: .rest,
-            startedAt: .now,
-            focusDuration: nil,
-            restDuration: restDuration,
-            pausedAt: nil,
-            pausedAccumulated: 0,
-            isPaused: false,
-            pauseDeadline: nil
-        )
-    }
-
-    func taskDistribution(on date: Date) -> [TaskDistributionEntry] {
-        let calendar = Calendar.current
-        let dayStart = calendar.startOfDay(for: date)
-        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
-        let filtered = sessions.filter { $0.endedAt >= dayStart && $0.endedAt < dayEnd }
-        let grouped = Dictionary(grouping: filtered) { record in
-            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
-        }
-        return grouped.map { key, value in
-            TaskDistributionEntry(
-                id: key,
-                taskTitle: value.first?.taskTitle ?? "",
-                duration: value.reduce(0) { $0 + $1.focusedDuration },
-                colorSeed: key
-            )
-        }
-        .sorted(by: { $0.duration > $1.duration })
-    }
-
-    private func filteredSessions(range: TimeRange) -> [FocusSessionRecord] {
-        let calendar = Calendar.current
-        return sessions.filter { record in
-            switch range {
-            case .day:
-                return calendar.isDateInToday(record.endedAt)
-            case .week:
-                return calendar.isDate(record.endedAt, equalTo: .now, toGranularity: .weekOfYear)
-            case .month:
-                return calendar.isDate(record.endedAt, equalTo: .now, toGranularity: .month)
-            }
-        }
-    }
-
-    private static func normalizedCheckInDates(_ dates: [Date]) -> [Date] {
-        let calendar = Calendar.current
-        let uniqueDays = Set(dates.map { calendar.startOfDay(for: $0) })
-        return uniqueDays.sorted(by: >)
-    }
+    // MARK: - 内部：计时器
 
     private func startTicker() {
         ticker = Timer.publish(every: 1, on: .main, in: .common)
@@ -751,25 +506,32 @@ final class AppViewModel: ObservableObject {
     private func handleTimerTick() {
         guard activeSession != nil else { return }
 
-        _ = autoResumeFromPauseLimitIfNeeded(now: now)
+        let result = SessionManager.handleTimerTick(
+            activeSession: activeSession,
+            now: now,
+            settings: settings,
+            selectedTab: selectedTab
+        )
 
-        guard let activeSession else { return }
-
-        if activeSession.isPaused {
-            refreshDerivedState()
-            return
+        if let notice = result.autoResumeNotice {
+            showNotice(notice)
+            if result.newActiveSession?.isPaused == false {
+                activeTabEnteredAt = selectedTab == .active ? .now : nil
+            }
         }
 
-        guard let status = timerStatus, status.isFinished else {
-            refreshDerivedState()
-            return
+        activeSession = result.newActiveSession
+
+        if let stopResult = result.stopResult {
+            applyStopResult(stopResult)
         }
 
-        if activeSession.phase == .focus {
-            stopActiveSession()
-        } else {
-            endRest()
+        if result.shouldEndRest {
+            activeSession = nil
         }
+
+        refreshDerivedState()
+        syncLiveActivity()
     }
 
     private func reconcileActiveSessionIfNeeded() {
@@ -778,208 +540,58 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        _ = autoResumeFromPauseLimitIfNeeded(now: now)
+        let result = SessionManager.reconcile(
+            activeSession: activeSession,
+            now: now,
+            settings: settings,
+            selectedTab: selectedTab
+        )
 
-        guard let activeSession else {
-            refreshDerivedState(shouldSyncActivity: true)
-            return
-        }
-
-        if activeSession.isPaused {
-            refreshDerivedState(shouldSyncActivity: true)
-            return
-        }
-
-        let status = TimerEngine.status(for: activeSession, now: now)
-        guard status.isFinished else {
-            refreshDerivedState(shouldSyncActivity: true)
-            return
-        }
-
-        if activeSession.phase == .focus {
-            stopActiveSession()
-        } else {
-            endRest()
-        }
-    }
-
-    private func hasRecordedSession(session: ActiveSessionSnapshot, duration: TimeInterval, completed: Bool) -> Bool {
-        sessions.contains {
-            $0.taskID == session.taskID &&
-            $0.mode == session.mode &&
-            $0.taskTitle == session.taskTitle &&
-            abs($0.startedAt.timeIntervalSince(session.startedAt)) < 1 &&
-            abs($0.focusedDuration - duration) < 1 &&
-            $0.wasCompleted == completed
-        }
-    }
-
-    @discardableResult
-    private func autoResumeFromPauseLimitIfNeeded(now: Date) -> Bool {
-        guard var session = activeSession,
-              session.mode != .pomodoro,
-              session.isPaused,
-              let deadline = session.pauseDeadline,
-              now >= deadline
-        else {
-            return false
-        }
-
-        let pausedDuration = deadline.timeIntervalSince(session.pausedAt ?? deadline)
-        session.pausedAccumulated += pausedDuration
-        session.pausedAt = nil
-        session.isPaused = false
-        session.pauseDeadline = nil
-        activeSession = session
-        activeTabEnteredAt = selectedTab == .active ? .now : nil
-        showNotice(String(localized: "session.pause.autoResumed"))
-        syncLiveActivity()
-        return true
-    }
-
-    private func refreshDerivedState(shouldSyncActivity: Bool = false) {
-        ScreenAwakeController.update(isEnabled: settings.keepScreenAwake && activeSession != nil)
-        if shouldSyncActivity {
-            syncLiveActivity()
-        }
-    }
-
-    private func syncLiveActivity() {
-        guard settings.liveActivitiesEnabled else {
-            // 关闭时：清本地引用 + 立即结束所有系统活动
-            let ref = timerActivity
-            timerActivity = nil
-            Task {
-                if let activity = ref {
-                    await activity.end(nil, dismissalPolicy: .immediate)
-                }
-                for activity in Activity<TimerActivityAttributes>.activities {
-                    await activity.end(nil, dismissalPolicy: .immediate)
-                }
+        if let notice = result.autoResumeNotice {
+            showNotice(notice)
+            if result.newActiveSession?.isPaused == false {
+                activeTabEnteredAt = selectedTab == .active ? .now : nil
             }
-            return
         }
 
-        if let session = activeSession {
-            let status = TimerEngine.status(for: session, now: now)
+        activeSession = result.newActiveSession
 
-            // 倒计时/番茄钟：会话结束的未来时间点（秒表为 nil）
-            let endTime = status.remaining.map { Date.now.addingTimeInterval($0) }
+        if let stopResult = result.stopResult {
+            applyStopResult(stopResult)
+        }
 
-            // 秒表正向计时的参考起点 = 现在 - 已计时长（Widget 自动正向计数，无需 App 推送）
-            let elapsedReferenceDate = Date.now.addingTimeInterval(-status.elapsed)
+        if result.shouldEndRest {
+            activeSession = nil
+        }
 
-            // 暂停时冻结计时器显示值；有时限暂停交给 Widget 按结束时间自动倒计时。
-            let pausedTimerText: String
-            let pauseEndTime: Date?
-            if session.isPaused, let pauseDeadline = session.pauseDeadline {
-                pausedTimerText = ""
-                pauseEndTime = pauseDeadline
-            } else if session.isPaused {
-                // 无时限暂停：冻结当前时间值
-                if session.mode == .stopwatch {
-                    pausedTimerText = formattedDuration(status.elapsed)
-                } else {
-                    pausedTimerText = formattedDuration(status.remaining ?? 0)
-                }
-                pauseEndTime = nil
+        refreshDerivedState(shouldSyncActivity: true)
+    }
+
+    /// 将 StopResult 应用到当前状态（记录会话、置顶任务等）。
+    private func applyStopResult(_ result: SessionManager.StopResult) {
+        if let notice = result.notice {
+            showNotice(notice)
+        }
+
+        if let record = result.recordedSession {
+            sessions.insert(record, at: 0)
+            if settings.autoMoveCompletedTaskToTop, let taskID = record.taskID, let index = tasks.firstIndex(where: { $0.id == taskID }) {
+                var moved = tasks.remove(at: index)
+                moved.order = 0
+                tasks.insert(moved, at: 0)
+            }
+        }
+
+        if result.shouldBeginRest {
+            if let session = activeSession, let restDur = SessionManager.restDuration(after: session, activeTask: activeTask, restDurationMinutes: settings.restDurationMinutes) {
+                activeSession = SessionManager.makeRestSnapshot(after: session, restDuration: restDur)
             } else {
-                pausedTimerText = ""
-                pauseEndTime = nil
-            }
-
-            // 阶段标签：有时限暂停 vs 无时限暂停 区分显示
-            let phaseLabel: String
-            if session.isPaused {
-                if session.pauseDeadline != nil {
-                    phaseLabel = String(localized: "la.paused")
-                } else {
-                    phaseLabel = String(localized: "la.paused.indefinite")
-                }
-            } else if session.phase == .focus {
-                phaseLabel = String(localized: "la.phase.focus")
-            } else {
-                phaseLabel = String(localized: "la.phase.rest")
-            }
-
-            let state = TimerActivityAttributes.ContentState(
-                endTime: endTime,
-                elapsedReferenceDate: elapsedReferenceDate,
-                pausedTimerText: pausedTimerText,
-                pauseEndTime: pauseEndTime,
-                taskTitle: session.taskTitle,
-                phaseLabel: phaseLabel,
-                modeLabel: liveActivityModeLabel(for: session.mode),
-                modeSystemImage: liveActivityModeImage(for: session.mode),
-                isPaused: session.isPaused,
-                isRest: session.phase == .rest,
-                isStopwatch: session.mode == .stopwatch && session.phase == .focus
-            )
-
-            // staleDate：倒计时/番茄钟在结束时间标记为过期；秒表无限期
-            let staleDate = endTime
-
-            // 尝试更新已有活动；若本地引用已失效则清除，走新建流程
-            if let activity = timerActivity,
-               Activity<TimerActivityAttributes>.activities.contains(where: { $0.id == activity.id }) {
-                Task {
-                    await activity.update(ActivityContent(state: state, staleDate: staleDate))
-                }
-            } else {
-                // 引用已失效或首次创建：清理残留，新建
-                timerActivity = nil
-                let staleActivities = Activity<TimerActivityAttributes>.activities
-                let attributes = TimerActivityAttributes(taskID: session.taskID)
-
-                Task { @MainActor in
-                    for stale in staleActivities {
-                        await stale.end(nil, dismissalPolicy: .immediate)
-                    }
-
-                    guard self.timerActivity == nil, self.activeSession != nil else { return }
-                    do {
-                        self.timerActivity = try Activity.request(
-                            attributes: attributes,
-                            content: ActivityContent(state: state, staleDate: staleDate),
-                            pushType: nil
-                        )
-                    } catch {
-                        print("Live Activity failed to start: \(error.localizedDescription)")
-                    }
-                }
-            }
-        } else {
-            // 没有活跃会话，结束所有活动
-            let activityRef = timerActivity
-            timerActivity = nil
-            Task {
-                if let activity = activityRef {
-                    await activity.end(nil, dismissalPolicy: .immediate)
-                } else {
-                    for activity in Activity<TimerActivityAttributes>.activities {
-                        await activity.end(nil, dismissalPolicy: .immediate)
-                    }
-                }
+                activeSession = nil
             }
         }
     }
 
-    private func liveActivityModeLabel(for mode: FocusMode) -> String {
-        switch mode {
-        case .pomodoro:  return String(localized: "mode.pomodoro")
-        case .countdown: return String(localized: "mode.countdown")
-        case .stopwatch: return String(localized: "mode.stopwatch")
-        }
-    }
-
-    private func liveActivityModeImage(for mode: FocusMode) -> String {
-        switch mode {
-        case .pomodoro:  return "timer"
-        case .countdown: return "hourglass"
-        case .stopwatch: return "stopwatch"
-        }
-    }
-
+    // MARK: - 内部：持久化
 
     private func wirePersistence() {
         // 用户数据与设置分开持久化，避免设置切换时重复写入会话/任务大文件。
@@ -992,12 +604,14 @@ final class AppViewModel: ObservableObject {
             $checkInDates.map { _ in () }.eraseToAnyPublisher(),
             $lastTaskID.map { _ in () }.eraseToAnyPublisher()
         )
+        .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
         .sink { [weak self] _ in
             self?.persistDataState()
         }
         .store(in: &cancellables)
 
         $settings
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] newSettings in
                 self?.persistSettingsState(newSettings)
             }
@@ -1047,6 +661,8 @@ final class AppViewModel: ObservableObject {
         refreshDerivedState()
     }
 
+    // MARK: - 内部：副作用
+
     private func wireSideEffects() {
         // 提醒同步：仅在提醒相关设置改变时重新调度
         $settings
@@ -1072,6 +688,12 @@ final class AppViewModel: ObservableObject {
             .removeDuplicates { $0.liveActivitiesEnabled == $1.liveActivitiesEnabled }
             .sink { [weak self] _ in self?.syncLiveActivity() }
             .store(in: &cancellables)
+
+        // 签到缓存：checkInDates 变化时重算连续天数
+        $checkInDates
+            .dropFirst()
+            .sink { [weak self] _ in self?.refreshCheckInCache() }
+            .store(in: &cancellables)
     }
 
     private func wirePersistenceAndSideEffects() {
@@ -1079,13 +701,14 @@ final class AppViewModel: ObservableObject {
         wireSideEffects()
     }
 
-    /// 同步每日提醒状态：今天已专注则取消，否则按设置调度
+    // MARK: - 内部：通知
+
     private func syncReminder() {
         guard settings.dailyReminderEnabled else {
             notifications.cancelDailyReminder()
             return
         }
-        if hasFocusedToday() {
+        if sessions.contains(where: { Calendar.current.isDateInToday($0.endedAt) }) {
             notifications.cancelDailyReminder()
         } else {
             notifications.scheduleIfAuthorized(
@@ -1093,11 +716,6 @@ final class AppViewModel: ObservableObject {
                 minute: settings.dailyReminderMinute
             )
         }
-    }
-
-    /// 今天是否已有合格的专注记录（≥5s，recordSession 才会写入）
-    private func hasFocusedToday() -> Bool {
-        sessions.contains { Calendar.current.isDateInToday($0.endedAt) }
     }
 
     private func syncCountdownReminders() {
@@ -1117,7 +735,7 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        let reminderDate = normalizedCountdownDate(event.date, includesTime: event.includesTime)
+        let reminderDate = CountdownManager.normalizedDate(event.date, includesTime: event.includesTime)
         guard reminderDate > Date.now else {
             notifications.cancelCountdownReminder(eventID: event.id)
             return
@@ -1129,8 +747,149 @@ final class AppViewModel: ObservableObject {
         )
     }
 
-    private func normalizedCountdownDate(_ date: Date, includesTime: Bool) -> Date {
-        includesTime ? date : Calendar.current.startOfDay(for: date)
+    // MARK: - 内部：Live Activity
+
+    private func syncLiveActivity() {
+        guard settings.liveActivitiesEnabled else {
+            let ref = timerActivity
+            timerActivity = nil
+            Task {
+                if let activity = ref {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
+                for activity in Activity<TimerActivityAttributes>.activities {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
+            }
+            return
+        }
+
+        if let session = activeSession {
+            let status = TimerEngine.status(for: session, now: now)
+            let endTime = status.remaining.map { Date.now.addingTimeInterval($0) }
+            let elapsedReferenceDate = Date.now.addingTimeInterval(-status.elapsed)
+
+            let pausedTimerText: String
+            let pauseEndTime: Date?
+            if session.isPaused, let pauseDeadline = session.pauseDeadline {
+                pausedTimerText = ""
+                pauseEndTime = pauseDeadline
+            } else if session.isPaused {
+                if session.mode == .stopwatch {
+                    pausedTimerText = formattedDuration(status.elapsed)
+                } else {
+                    pausedTimerText = formattedDuration(status.remaining ?? 0)
+                }
+                pauseEndTime = nil
+            } else {
+                pausedTimerText = ""
+                pauseEndTime = nil
+            }
+
+            let phaseLabel: String
+            if session.isPaused {
+                if session.pauseDeadline != nil {
+                    phaseLabel = String(localized: "la.paused")
+                } else {
+                    phaseLabel = String(localized: "la.paused.indefinite")
+                }
+            } else if session.phase == .focus {
+                phaseLabel = String(localized: "la.phase.focus")
+            } else {
+                phaseLabel = String(localized: "la.phase.rest")
+            }
+
+            let state = TimerActivityAttributes.ContentState(
+                endTime: endTime,
+                elapsedReferenceDate: elapsedReferenceDate,
+                pausedTimerText: pausedTimerText,
+                pauseEndTime: pauseEndTime,
+                taskTitle: session.taskTitle,
+                phaseLabel: phaseLabel,
+                modeLabel: session.mode.label,
+                modeSystemImage: session.mode.symbol,
+                isPaused: session.isPaused,
+                isRest: session.phase == .rest,
+                isStopwatch: session.mode == .stopwatch && session.phase == .focus
+            )
+
+            let staleDate = endTime
+
+            if let activity = timerActivity,
+               Activity<TimerActivityAttributes>.activities.contains(where: { $0.id == activity.id }) {
+                Task {
+                    await activity.update(ActivityContent(state: state, staleDate: staleDate))
+                }
+            } else {
+                timerActivity = nil
+                let staleActivities = Activity<TimerActivityAttributes>.activities
+                let attributes = TimerActivityAttributes(taskID: session.taskID)
+
+                Task { @MainActor in
+                    for stale in staleActivities {
+                        await stale.end(nil, dismissalPolicy: .immediate)
+                    }
+
+                    guard self.timerActivity == nil, self.activeSession != nil else { return }
+                    do {
+                        self.timerActivity = try Activity.request(
+                            attributes: attributes,
+                            content: ActivityContent(state: state, staleDate: staleDate),
+                            pushType: nil
+                        )
+                    } catch {
+                        logger.error("Live Activity failed to start: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } else {
+            let activityRef = timerActivity
+            timerActivity = nil
+            Task {
+                if let activity = activityRef {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                } else {
+                    for activity in Activity<TimerActivityAttributes>.activities {
+                        await activity.end(nil, dismissalPolicy: .immediate)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 内部：工具
+
+    private func refreshDerivedState(shouldSyncActivity: Bool = false) {
+        ScreenAwakeController.update(isEnabled: settings.keepScreenAwake && activeSession != nil)
+        if shouldSyncActivity {
+            syncLiveActivity()
+        }
+        syncWidgetData()
+    }
+
+    private func syncWidgetData() {
+        let todayDuration = sessions
+            .filter { Calendar.current.isDateInToday($0.endedAt) }
+            .reduce(0) { $0 + $1.focusedDuration }
+        SharedStore.syncTodayFocusDuration(todayDuration)
+        SharedStore.syncCountdownEvents(
+            countdownEvents.map {
+                SharedCountdownEvent(
+                    id: $0.id,
+                    title: $0.title,
+                    date: $0.date,
+                    includesTime: $0.includesTime
+                )
+            }
+        )
+        SharedStore.syncMonthlyFocusDurations(
+            dailyFocusDurations(for: .now)
+                .map { day, duration in
+                    SharedDailyFocusDuration(day: day, duration: duration)
+                }
+                .sorted(by: { $0.day < $1.day })
+        )
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func showNotice(_ message: String) {
@@ -1160,13 +919,15 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - 数据清除
+
     func clearAllData() {
         guard !isPreviewMode else { return }
 
-        // Reset to default state
-        tasks = []
+        let defaultData = DataStore.default
+        tasks = defaultData.tasks.sorted(by: { $0.order < $1.order })
         sessions = []
-        countdownEvents = []
+        countdownEvents = defaultData.countdownEvents.sorted(by: { $0.date < $1.date })
         profile = ProfileInfo.default
         settings = AppSettings.default
         checkInDates = []
@@ -1175,12 +936,11 @@ final class AppViewModel: ObservableObject {
         activeSession = nil
         selectedTab = .active
 
-        // 清除持久化数据
         let dataStore = DataStore(
             version: StorageSchemaVersion.current,
-            tasks: [],
+            tasks: tasks,
             sessions: [],
-            countdownEvents: [],
+            countdownEvents: countdownEvents,
             profile: ProfileInfo.default,
             checkInDates: [],
             lastTaskID: nil,
@@ -1195,7 +955,6 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - 数据导入导出
 
-    /// 导出数据为含版本号的 JSON 文件
     func exportData() -> Data? {
         guard !isPreviewMode else { return nil }
 
@@ -1212,12 +971,10 @@ final class AppViewModel: ObservableObject {
         return persistence.exportData(data: dataStore, settings: settings)
     }
 
-    /// 预检导入文件，供 UI 展示版本提示；返回值可直接传给 importData(_:)。
-    func inspectImport(data: Data) -> PersistenceService.ImportResult? {
+    func inspectImport(data: Data) -> Persistence.ImportResult? {
         persistence.inspectImport(data: data)
     }
 
-    /// 从原始 JSON 数据导入；适合外部调用，内部会先完成一次预检解析。
     func importData(from data: Data) -> ImportStatus {
         guard !isPreviewMode else { return .failed }
 
@@ -1227,22 +984,19 @@ final class AppViewModel: ObservableObject {
         return importData(result)
     }
 
-    /// 使用已预检解析的结果导入，避免确认弹窗后再次解码同一份文件。
-    func importData(_ result: PersistenceService.ImportResult) -> ImportStatus {
+    func importData(_ result: Persistence.ImportResult) -> ImportStatus {
         guard !isPreviewMode else { return .failed }
 
-        // 应用导入的数据
         tasks = result.tasks.sorted(by: { $0.order < $1.order })
         sessions = result.sessions.sorted(by: { $0.startedAt > $1.startedAt })
         countdownEvents = result.countdownEvents.sorted(by: { $0.date < $1.date })
         profile = result.profile
         settings = result.settings
-        checkInDates = Self.normalizedCheckInDates(result.checkInDates ?? [])
+        checkInDates = CheckIn.normalizedDates(result.checkInDates)
         lastTaskID = result.lastTaskID
         quickLaunchTaskID = result.lastTaskID
-        activeSession = nil // 导入时不恢复进行中的计时
+        activeSession = nil
 
-        // 持久化数据
         let dataStore = DataStore(
             version: StorageSchemaVersion.current,
             tasks: tasks,
@@ -1261,13 +1015,12 @@ final class AppViewModel: ObservableObject {
 
         return ImportStatus.success(
             fileVersion: result.fileVersion,
-            isLegacy: result.isLegacy,
             isSignatureMismatch: result.isSignatureMismatch
         )
     }
 
     enum ImportStatus {
-        case success(fileVersion: Int, isLegacy: Bool, isSignatureMismatch: Bool)
+        case success(fileVersion: Int, isSignatureMismatch: Bool)
         case failed
 
         var isSuccess: Bool {

@@ -9,6 +9,7 @@ struct ChronaWidgetLiveActivity: Widget {
         ActivityConfiguration(for: TimerActivityAttributes.self) { context in
             LockScreenBannerView(state: context.state)
                 .activityBackgroundTint(.clear)
+                .widgetURL(URL(string: "chrona://active"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -30,6 +31,7 @@ struct ChronaWidgetLiveActivity: Widget {
                 Image(systemName: context.state.compactSystemImage)
                     .foregroundStyle(context.state.statusColor)
             }
+            .widgetURL(URL(string: "chrona://active"))
             .keylineTint(Color("AccentColor"))
         }
     }

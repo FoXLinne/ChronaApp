@@ -15,7 +15,7 @@ struct TaskEditorView: View {
     let task: TaskItem?
     let onSave: (TaskItem) -> Void
 
-    private let backgrounds = ["sunset", "forest", "ocean", "lavender", "midnight", "mint"]
+    private let backgrounds = ThemePalette.seeds
 
     init(task: TaskItem?, onSave: @escaping (TaskItem) -> Void) {
         self.task = task
@@ -24,7 +24,7 @@ struct TaskEditorView: View {
         _mode = State(initialValue: task?.mode ?? .pomodoro)
         _presetID = State(initialValue: task?.pomodoroPresetID ?? PomodoroPreset.default.id)
         _countdownDuration = State(initialValue: task?.countdownDuration ?? 5 * 60)
-        _backgroundName = State(initialValue: task?.backgroundName ?? "sunset")
+        _backgroundName = State(initialValue: task?.backgroundName ?? ThemePalette.defaultSeed)
     }
 
     var body: some View {
@@ -42,9 +42,9 @@ struct TaskEditorView: View {
                     }
 
                     Picker(String(localized: "task.mode"), selection: $mode) {
-                        Text(String(localized: "mode.pomodoro")).tag(FocusMode.pomodoro)
-                        Text(String(localized: "mode.stopwatch")).tag(FocusMode.stopwatch)
-                        Text(String(localized: "mode.countdown")).tag(FocusMode.countdown)
+                        ForEach(FocusMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
                     }
                     Picker(String(localized: "task.background"), selection: $backgroundName) {
                         ForEach(backgrounds, id: \.self) { name in
@@ -57,7 +57,7 @@ struct TaskEditorView: View {
                     Section(String(localized: "task.form.timer")) {
                         Picker(String(localized: "task.preset"), selection: $presetID) {
                             ForEach(PomodoroPreset.all) { preset in
-                                Text(String(format: "%@ %d/%d", String(localized: "mode.pomodoro"), Int(preset.workDuration / 60), Int(preset.breakDuration / 60))).tag(preset.id)
+                                Text(String(format: "%@ %d/%d", FocusMode.pomodoro.label, Int(preset.workDuration / 60), Int(preset.breakDuration / 60))).tag(preset.id)
                             }
                         }
                     }

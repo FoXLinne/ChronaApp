@@ -672,7 +672,7 @@ private extension StatisticsView {
         numberFont: Font,
         textFont: Font
     ) -> some View {
-        let parts = localizedTemplateParts(template)
+        let parts = template.localizedTemplateParts()
 
         return HStack(alignment: .firstTextBaseline, spacing: 2) {
             if !parts.prefix.isEmpty {
@@ -689,17 +689,6 @@ private extension StatisticsView {
                     .foregroundStyle(.secondary)
             }
         }
-    }
-
-    func localizedTemplateParts(_ template: String) -> (prefix: String, suffix: String) {
-        let parts = template.components(separatedBy: "{count}")
-        guard parts.count == 2 else {
-            return ("", template)
-        }
-        return (
-            parts[0].trimmingCharacters(in: .whitespacesAndNewlines),
-            parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-        )
     }
 
     func statisticsEmptyState() -> some View {

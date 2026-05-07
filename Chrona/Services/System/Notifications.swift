@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 
-final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
+final class Notifications: NSObject, UNUserNotificationCenterDelegate {
     private let dailyReminderIdentifier = "daily-focus-reminder"
     private let countdownReminderPrefix = "countdown-event-reminder-"
 

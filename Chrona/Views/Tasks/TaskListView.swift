@@ -268,14 +268,7 @@ struct TaskListView: View {
     }
 
     private func modeTitle(_ mode: FocusMode) -> String {
-        switch mode {
-        case .pomodoro:
-            return String(localized: "mode.pomodoro")
-        case .stopwatch:
-            return String(localized: "mode.stopwatch")
-        case .countdown:
-            return String(localized: "mode.countdown")
-        }
+        mode.label
     }
 
     private func guardTaskMutation(_ action: () -> Void) {
@@ -390,22 +383,11 @@ private struct TaskRow: View {
     }
 
     private var symbol: String {
-        switch task.mode {
-        case .pomodoro: return "timer"
-        case .stopwatch: return "stopwatch"
-        case .countdown: return "hourglass"
-        }
+        task.mode.symbol
     }
 
     private var modeLabel: String {
-        switch task.mode {
-        case .pomodoro:
-            return String(localized: "mode.pomodoro")
-        case .stopwatch:
-            return String(localized: "mode.stopwatch")
-        case .countdown:
-            return String(localized: "mode.countdown")
-        }
+        task.mode.label
     }
 
     private var subtitleDetail: String? {

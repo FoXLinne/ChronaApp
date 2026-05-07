@@ -2,6 +2,7 @@ import SwiftUI
 
 enum ThemePalette {
     static let seeds = ["sunset", "forest", "ocean", "lavender", "midnight", "mint"]
+    static let defaultSeed = "sunset"
 
     static func activeBackgroundColors(for seed: String, colorScheme: ColorScheme) -> [Color] {
         switch colorScheme {

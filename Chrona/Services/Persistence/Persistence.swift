@@ -1,68 +1,24 @@
 import CryptoKit
 import Foundation
+import os
 
 /// 负责数据与设置的分文件持久化、旧版本迁移及导入导出
-final class PersistenceService {
+final class Persistence {
+    private let logger = Logger(subsystem: "top.kaedekr.chrona", category: "Persistence")
     private let dataURL: URL
     private let settingsURL: URL
-    private let legacyURL: URL
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
-    private let allowedBackgroundNames = Set(["sunset", "forest", "ocean", "lavender", "midnight", "mint"])
+    private let allowedBackgroundNames = Set(ThemePalette.seeds)
 
     init() {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         dataURL = base.appendingPathComponent("chrona_data.json")
         settingsURL = base.appendingPathComponent("chrona_settings.json")
-        legacyURL = base.appendingPathComponent("chrona_state.json")
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
-    }
-
-    // MARK: - 迁移
-
-    /// 若旧版单文件存在，则补齐缺失或损坏的新文件；只有两份新文件都可读后才删除旧文件。
-    func migrateIfNeeded() -> Bool {
-        guard FileManager.default.fileExists(atPath: legacyURL.path),
-              let data = try? Data(contentsOf: legacyURL),
-              let snapshot = try? decoder.decode(AppSnapshot.self, from: data) else {
-            return false
-        }
-
-        let isDataReady = canDecode(DataStore.self, at: dataURL)
-        let isSettingsReady = canDecode(SettingsStore.self, at: settingsURL)
-        guard !isDataReady || !isSettingsReady else {
-            return false
-        }
-
-        let migratedData = DataStore(
-            version: StorageSchemaVersion.current,
-            tasks: snapshot.tasks,
-            sessions: snapshot.sessions,
-            countdownEvents: snapshot.countdownEvents,
-            profile: snapshot.profile,
-            checkInDates: snapshot.checkInDates,
-            lastTaskID: snapshot.lastTaskID,
-            activeSession: snapshot.activeSession
-        )
-        let migratedSettings = SettingsStore(
-            version: StorageSchemaVersion.current,
-            settings: snapshot.settings
-        )
-
-        let didSaveData = isDataReady || save(data: migratedData)
-        let didSaveSettings = isSettingsReady || save(settings: migratedSettings)
-        guard didSaveData,
-              didSaveSettings,
-              canDecode(DataStore.self, at: dataURL),
-              canDecode(SettingsStore.self, at: settingsURL) else {
-            return false
-        }
-
-        try? FileManager.default.removeItem(at: legacyURL)
-        return true
     }
 
     // MARK: - 加载
@@ -99,16 +55,26 @@ final class PersistenceService {
         return writeAndVerify(copy, to: settingsURL)
     }
 
-    /// 写入后立即读回解码，避免迁移阶段误删仍有价值的旧数据。
-    private func writeAndVerify<T: Codable>(_ value: T, to url: URL) -> Bool {
-        do {
-            let data = try encoder.encode(value)
-            try data.write(to: url, options: [.atomic])
-            return canDecode(T.self, at: url)
-        } catch {
-            print("Persistence write failed: \(error.localizedDescription)")
-            return false
+    /// 写入后立即读回解码，避免迁移阶段误删仍有价值的旧数据。失败时最多重试 2 次。
+    private func writeAndVerify<T: Codable>(_ value: T, to url: URL, maxRetries: Int = 2) -> Bool {
+        for attempt in 0...maxRetries {
+            do {
+                let data = try encoder.encode(value)
+                try data.write(to: url, options: [.atomic])
+                if canDecode(T.self, at: url) {
+                    return true
+                }
+                logger.error("Verify failed after write to \(url.lastPathComponent), attempt \(attempt + 1)")
+            } catch {
+                logger.error("Write failed to \(url.lastPathComponent): \(error.localizedDescription), attempt \(attempt + 1)")
+            }
+            // 非最后一次尝试时短暂等待
+            if attempt < maxRetries {
+                Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1))
+            }
         }
+        logger.critical("Persisting \(String(describing: T.self)) failed after \(maxRetries + 1) attempts")
+        return false
     }
 
     private func canDecode<T: Decodable>(_ type: T.Type, at url: URL) -> Bool {
@@ -147,12 +113,10 @@ final class PersistenceService {
         let countdownEvents: [CountdownEvent]
         let profile: ProfileInfo
         let settings: AppSettings
-        let checkInDates: [Date]?
+        let checkInDates: [Date]
         let lastTaskID: UUID?
         /// 导入文件的格式版本号，若为旧格式则为 0
         let fileVersion: Int
-        /// 导入文件是否来自旧版 AppSnapshot 格式
-        let isLegacy: Bool
         /// 新版备份签名是否通过；旧备份没有签名，保持兼容导入。
         let isSignatureVerified: Bool
         /// 文件带有签名但校验失败，说明备份可能被修改或损坏。
@@ -174,25 +138,8 @@ final class PersistenceService {
                 checkInDates: export.checkInDates,
                 lastTaskID: export.lastTaskID,
                 fileVersion: export.formatVersion,
-                isLegacy: false,
                 isSignatureVerified: hasSignature && isSignatureVerified,
                 isSignatureMismatch: hasSignature && !isSignatureVerified
-            )
-        }
-        // 回退旧版 AppSnapshot（无版本号，视为 version 0）
-        if let snapshot = try? decoder.decode(AppSnapshot.self, from: data) {
-            return makeImportResult(
-                tasks: snapshot.tasks,
-                sessions: snapshot.sessions,
-                countdownEvents: snapshot.countdownEvents,
-                profile: snapshot.profile,
-                settings: snapshot.settings,
-                checkInDates: snapshot.checkInDates,
-                lastTaskID: snapshot.lastTaskID,
-                fileVersion: 0,
-                isLegacy: true,
-                isSignatureVerified: false,
-                isSignatureMismatch: false
             )
         }
         return nil
@@ -201,7 +148,7 @@ final class PersistenceService {
 
 // MARK: - 导入签名与归一化
 
-private extension PersistenceService {
+private extension Persistence {
     struct ExportSigningPayload: Codable {
         let formatVersion: Int
         let exportedAt: Date
@@ -210,12 +157,14 @@ private extension PersistenceService {
         var countdownEvents: [CountdownEvent]
         var profile: ProfileInfo
         var settings: AppSettings
-        var checkInDates: [Date]?
+        var checkInDates: [Date]
         var lastTaskID: UUID?
     }
 
     var exportSignatureKey: SymmetricKey {
-        // 这是完整性签名，不是隐私加密；密钥只用于拦截普通手改和传输损坏。
+        // 完整性签名密钥，用于拦截普通手改和传输损坏。
+        // 注意：客户端密钥可被逆向提取，此机制不提供防篡改安全保障。
+        // 若需跨设备验签，密钥必须固定；不可改为随机/Keychain 方案。
         SymmetricKey(data: Data("Chrona.ExportSignature.v1.KaedeKR".utf8))
     }
 
@@ -257,10 +206,9 @@ private extension PersistenceService {
         countdownEvents: [CountdownEvent],
         profile: ProfileInfo,
         settings: AppSettings,
-        checkInDates: [Date]?,
+        checkInDates: [Date],
         lastTaskID: UUID?,
         fileVersion: Int,
-        isLegacy: Bool,
         isSignatureVerified: Bool,
         isSignatureMismatch: Bool
     ) -> ImportResult {
@@ -276,7 +224,6 @@ private extension PersistenceService {
             checkInDates: normalizedCheckInDates(checkInDates),
             lastTaskID: lastTaskID.flatMap { taskIDs.contains($0) ? $0 : nil },
             fileVersion: fileVersion,
-            isLegacy: isLegacy,
             isSignatureVerified: isSignatureVerified,
             isSignatureMismatch: isSignatureMismatch
         )
@@ -300,7 +247,7 @@ private extension PersistenceService {
                     ? copy.pomodoroPresetID
                     : PomodoroPreset.default.id
                 copy.countdownDuration = clampedDuration(copy.countdownDuration, min: 60, max: 300 * 60, fallback: 5 * 60)
-                copy.backgroundName = allowedBackgroundNames.contains(copy.backgroundName) ? copy.backgroundName : "sunset"
+                copy.backgroundName = allowedBackgroundNames.contains(copy.backgroundName) ? copy.backgroundName : ThemePalette.defaultSeed
                 copy.order = index
                 return copy
             }
@@ -376,8 +323,8 @@ private extension PersistenceService {
         return copy
     }
 
-    func normalizedCheckInDates(_ dates: [Date]?) -> [Date]? {
-        guard let dates else { return nil }
+    func normalizedCheckInDates(_ dates: [Date]) -> [Date] {
+        guard !dates.isEmpty else { return [] }
         let calendar = Calendar.current
         let uniqueDays = Set(dates.map { calendar.startOfDay(for: $0) })
         return uniqueDays.sorted(by: >)

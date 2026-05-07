@@ -26,6 +26,23 @@ struct ChronaApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     appModel.handleScenePhaseChange(phase)
                 }
+                .onOpenURL { url in
+                    handleDeepLink(url)
+                }
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "chrona" else { return }
+        switch url.host() {
+        case "statistics":
+            appModel.selectedTab = .statistics
+        case "countdown":
+            appModel.selectedTab = .countdown
+        case "active":
+            appModel.selectedTab = .active
+        default:
+            break
         }
     }
 }

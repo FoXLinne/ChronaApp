@@ -8,10 +8,9 @@ struct SettingsView: View {
     @State private var draft = AppSettings.default
     @State private var showClearDataConfirm = false
     @State private var showClearDataFinal = false
-    @State private var pendingImportResult: PersistenceService.ImportResult?
+    @State private var pendingImportResult: Persistence.ImportResult?
     @State private var showImportPicker = false
     @State private var showImportConfirm = false
-    @State private var importIsLegacy = false
     @State private var importFileVersion = 0
     @State private var importSignatureMismatch = false
 
@@ -227,8 +226,6 @@ struct SettingsView: View {
     private var importConfirmTitle: String {
         if importSignatureMismatch {
             return String(localized: "settings.importData.confirm.title.modified")
-        } else if importIsLegacy {
-            return String(localized: "settings.importData.confirm.title.legacy")
         } else if importFileVersion > ExportFormatVersion.current {
             return String(localized: "settings.importData.confirm.title.newer")
         } else {
@@ -239,8 +236,6 @@ struct SettingsView: View {
     private var importConfirmMessage: String {
         if importSignatureMismatch {
             return String(localized: "settings.importData.confirm.message.modified")
-        } else if importIsLegacy {
-            return String(localized: "settings.importData.confirm.message.legacy")
         } else if importFileVersion > ExportFormatVersion.current {
             return String(format: String(localized: "settings.importData.confirm.message.newer"), importFileVersion, ExportFormatVersion.current)
         } else {
@@ -360,7 +355,6 @@ struct SettingsView: View {
                 // 预检结果会在确认后直接复用，避免重复解码同一份备份文件。
                 pendingImportResult = importResult
                 importFileVersion = importResult.fileVersion
-                importIsLegacy = importResult.isLegacy
                 importSignatureMismatch = importResult.isSignatureMismatch
                 showImportConfirm = true
             } catch {
@@ -379,7 +373,7 @@ struct SettingsView: View {
         defer { pendingImportResult = nil }
 
         let status = appModel.importData(importResult)
-        guard case .success(let fileVersion, let isLegacy, let isSignatureMismatch) = status else {
+        guard case .success(let fileVersion, let isSignatureMismatch) = status else {
             appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
             return
         }
@@ -390,8 +384,6 @@ struct SettingsView: View {
         // 版本提示
         if isSignatureMismatch {
             appModel.showGlobalNotice(String(localized: "settings.importData.modifiedNotice"))
-        } else if isLegacy {
-            appModel.showGlobalNotice(String(localized: "settings.importData.legacyNotice"))
         } else if fileVersion > ExportFormatVersion.current {
             appModel.showGlobalNotice(String(localized: "settings.importData.newerWarning"))
         } else {

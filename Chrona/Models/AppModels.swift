@@ -6,6 +6,24 @@ enum FocusMode: String, Codable, CaseIterable, Identifiable {
     case countdown
 
     var id: String { rawValue }
+
+    /// 本地化模式名称
+    var label: String {
+        switch self {
+        case .pomodoro:  return String(localized: "mode.pomodoro")
+        case .stopwatch: return String(localized: "mode.stopwatch")
+        case .countdown: return String(localized: "mode.countdown")
+        }
+    }
+
+    /// SF Symbol 名称
+    var symbol: String {
+        switch self {
+        case .pomodoro:  return "timer"
+        case .stopwatch: return "stopwatch"
+        case .countdown: return "hourglass"
+        }
+    }
 }
 
 enum AppTheme: String, Codable, CaseIterable, Identifiable {
@@ -56,7 +74,7 @@ struct TaskItem: Identifiable, Codable, Equatable {
         mode: FocusMode,
         pomodoroPresetID: String = PomodoroPreset.default.id,
         countdownDuration: TimeInterval = 5 * 60,
-        backgroundName: String = "sunset",
+        backgroundName: String = ThemePalette.defaultSeed,
         order: Int
     ) {
         self.id = id
@@ -170,6 +188,7 @@ struct AppSettings: Codable, Equatable {
     var statisticsExpandedCards: [String]
     var statisticsDistributionRange: String
 
+    /// 默认值唯一来源；所有 init 均从此处派生。
     static let `default` = AppSettings(
         autoMoveCompletedTaskToTop: false,
         strikethroughCompletedTask: true,
@@ -193,27 +212,33 @@ struct AppSettings: Codable, Equatable {
         statisticsDistributionRange: "day"
     )
 
-    init(
-        autoMoveCompletedTaskToTop: Bool = false,
-        strikethroughCompletedTask: Bool = true,
-        enableMinimalBlackMode: Bool = true,
-        keepScreenAwake: Bool = true,
-        restDurationMinutes: Int = 5,
-        theme: AppTheme = .system,
-        liveActivitiesEnabled: Bool = true,
-        dailyReminderEnabled: Bool = false,
-        dailyReminderHour: Int = 20,
-        dailyReminderMinute: Int = 0,
-        advancedDisallowPause: Bool = false,
-        advancedDisallowEarlyFinish: Bool = false,
-        stopwatchPauseLimitMinutes: Int? = nil,
-        minimalModeActivationDelaySeconds: Int = 5,
-        showStatusBarOverlay: Bool = true,
-        showPersonalizedBackground: Bool = true,
-        statisticsCardOrder: [String] = [],
-        statisticsHiddenCards: [String] = [],
-        statisticsExpandedCards: [String] = [],
-        statisticsDistributionRange: String = "day"
+    /// 无参便利 init：全部使用默认值。
+    init() {
+        self = .default
+    }
+
+    /// 成员初始化器，仅供 static let default 内部使用。
+    private init(
+        autoMoveCompletedTaskToTop: Bool,
+        strikethroughCompletedTask: Bool,
+        enableMinimalBlackMode: Bool,
+        keepScreenAwake: Bool,
+        restDurationMinutes: Int,
+        theme: AppTheme,
+        liveActivitiesEnabled: Bool,
+        dailyReminderEnabled: Bool,
+        dailyReminderHour: Int,
+        dailyReminderMinute: Int,
+        advancedDisallowPause: Bool,
+        advancedDisallowEarlyFinish: Bool,
+        stopwatchPauseLimitMinutes: Int?,
+        minimalModeActivationDelaySeconds: Int,
+        showStatusBarOverlay: Bool,
+        showPersonalizedBackground: Bool,
+        statisticsCardOrder: [String],
+        statisticsHiddenCards: [String],
+        statisticsExpandedCards: [String],
+        statisticsDistributionRange: String
     ) {
         self.autoMoveCompletedTaskToTop = autoMoveCompletedTaskToTop
         self.strikethroughCompletedTask = strikethroughCompletedTask
@@ -237,29 +262,30 @@ struct AppSettings: Codable, Equatable {
         self.statisticsDistributionRange = statisticsDistributionRange
     }
 
-    /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容
+    /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容。
     init(from decoder: Decoder) throws {
+        let d = Self.default
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        autoMoveCompletedTaskToTop = try c.decodeIfPresent(Bool.self, forKey: .autoMoveCompletedTaskToTop) ?? false
-        strikethroughCompletedTask = try c.decodeIfPresent(Bool.self, forKey: .strikethroughCompletedTask) ?? true
-        enableMinimalBlackMode = try c.decodeIfPresent(Bool.self, forKey: .enableMinimalBlackMode) ?? true
-        keepScreenAwake = try c.decodeIfPresent(Bool.self, forKey: .keepScreenAwake) ?? true
-        restDurationMinutes = try c.decodeIfPresent(Int.self, forKey: .restDurationMinutes) ?? 5
-        theme = try c.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
-        liveActivitiesEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveActivitiesEnabled) ?? true
-        dailyReminderEnabled = try c.decodeIfPresent(Bool.self, forKey: .dailyReminderEnabled) ?? false
-        dailyReminderHour = try c.decodeIfPresent(Int.self, forKey: .dailyReminderHour) ?? 20
-        dailyReminderMinute = try c.decodeIfPresent(Int.self, forKey: .dailyReminderMinute) ?? 0
-        advancedDisallowPause = try c.decodeIfPresent(Bool.self, forKey: .advancedDisallowPause) ?? false
-        advancedDisallowEarlyFinish = try c.decodeIfPresent(Bool.self, forKey: .advancedDisallowEarlyFinish) ?? false
+        autoMoveCompletedTaskToTop = try c.decodeIfPresent(Bool.self, forKey: .autoMoveCompletedTaskToTop) ?? d.autoMoveCompletedTaskToTop
+        strikethroughCompletedTask = try c.decodeIfPresent(Bool.self, forKey: .strikethroughCompletedTask) ?? d.strikethroughCompletedTask
+        enableMinimalBlackMode = try c.decodeIfPresent(Bool.self, forKey: .enableMinimalBlackMode) ?? d.enableMinimalBlackMode
+        keepScreenAwake = try c.decodeIfPresent(Bool.self, forKey: .keepScreenAwake) ?? d.keepScreenAwake
+        restDurationMinutes = try c.decodeIfPresent(Int.self, forKey: .restDurationMinutes) ?? d.restDurationMinutes
+        theme = try c.decodeIfPresent(AppTheme.self, forKey: .theme) ?? d.theme
+        liveActivitiesEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveActivitiesEnabled) ?? d.liveActivitiesEnabled
+        dailyReminderEnabled = try c.decodeIfPresent(Bool.self, forKey: .dailyReminderEnabled) ?? d.dailyReminderEnabled
+        dailyReminderHour = try c.decodeIfPresent(Int.self, forKey: .dailyReminderHour) ?? d.dailyReminderHour
+        dailyReminderMinute = try c.decodeIfPresent(Int.self, forKey: .dailyReminderMinute) ?? d.dailyReminderMinute
+        advancedDisallowPause = try c.decodeIfPresent(Bool.self, forKey: .advancedDisallowPause) ?? d.advancedDisallowPause
+        advancedDisallowEarlyFinish = try c.decodeIfPresent(Bool.self, forKey: .advancedDisallowEarlyFinish) ?? d.advancedDisallowEarlyFinish
         stopwatchPauseLimitMinutes = try c.decodeIfPresent(Int.self, forKey: .stopwatchPauseLimitMinutes)
-        minimalModeActivationDelaySeconds = try c.decodeIfPresent(Int.self, forKey: .minimalModeActivationDelaySeconds) ?? 5
-        showStatusBarOverlay = try c.decodeIfPresent(Bool.self, forKey: .showStatusBarOverlay) ?? true
-        showPersonalizedBackground = try c.decodeIfPresent(Bool.self, forKey: .showPersonalizedBackground) ?? true
-        statisticsCardOrder = try c.decodeIfPresent([String].self, forKey: .statisticsCardOrder) ?? ["overview", "todayFocus", "heatmap", "distribution", "monthlyTrend"]
-        statisticsHiddenCards = try c.decodeIfPresent([String].self, forKey: .statisticsHiddenCards) ?? []
-        statisticsExpandedCards = try c.decodeIfPresent([String].self, forKey: .statisticsExpandedCards) ?? ["overview", "todayFocus", "distribution", "monthlyTrend"]
-        statisticsDistributionRange = try c.decodeIfPresent(String.self, forKey: .statisticsDistributionRange) ?? "day"
+        minimalModeActivationDelaySeconds = try c.decodeIfPresent(Int.self, forKey: .minimalModeActivationDelaySeconds) ?? d.minimalModeActivationDelaySeconds
+        showStatusBarOverlay = try c.decodeIfPresent(Bool.self, forKey: .showStatusBarOverlay) ?? d.showStatusBarOverlay
+        showPersonalizedBackground = try c.decodeIfPresent(Bool.self, forKey: .showPersonalizedBackground) ?? d.showPersonalizedBackground
+        statisticsCardOrder = try c.decodeIfPresent([String].self, forKey: .statisticsCardOrder) ?? d.statisticsCardOrder
+        statisticsHiddenCards = try c.decodeIfPresent([String].self, forKey: .statisticsHiddenCards) ?? d.statisticsHiddenCards
+        statisticsExpandedCards = try c.decodeIfPresent([String].self, forKey: .statisticsExpandedCards) ?? d.statisticsExpandedCards
+        statisticsDistributionRange = try c.decodeIfPresent(String.self, forKey: .statisticsDistributionRange) ?? d.statisticsDistributionRange
     }
 }
 
@@ -280,7 +306,7 @@ struct DataStore: Codable {
     var sessions: [FocusSessionRecord]
     var countdownEvents: [CountdownEvent]
     var profile: ProfileInfo
-    var checkInDates: [Date]?
+    var checkInDates: [Date]
     var lastTaskID: UUID?
     var activeSession: ActiveSessionSnapshot?
 
@@ -292,18 +318,66 @@ struct DataStore: Codable {
             TaskItem(title: "Workout", mode: .countdown, countdownDuration: 15 * 60, backgroundName: "ocean", order: 2)
         ],
         sessions: [],
-        countdownEvents: [],
+        countdownEvents: [
+            CountdownEvent(title: "WWDC", date: Calendar.current.date(byAdding: .day, value: 48, to: .now) ?? .now),
+            CountdownEvent(title: "Project Launch", date: Calendar.current.date(byAdding: .day, value: -12, to: .now) ?? .now)
+        ],
         profile: .default,
         checkInDates: [],
         lastTaskID: nil,
         activeSession: nil
     )
+
+    /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        tasks = try c.decodeIfPresent([TaskItem].self, forKey: .tasks) ?? []
+        sessions = try c.decodeIfPresent([FocusSessionRecord].self, forKey: .sessions) ?? []
+        countdownEvents = try c.decodeIfPresent([CountdownEvent].self, forKey: .countdownEvents) ?? []
+        profile = try c.decodeIfPresent(ProfileInfo.self, forKey: .profile) ?? .default
+        checkInDates = try c.decodeIfPresent([Date].self, forKey: .checkInDates) ?? []
+        lastTaskID = try c.decodeIfPresent(UUID.self, forKey: .lastTaskID)
+        activeSession = try c.decodeIfPresent(ActiveSessionSnapshot.self, forKey: .activeSession)
+    }
+
+    init(
+        version: Int,
+        tasks: [TaskItem],
+        sessions: [FocusSessionRecord],
+        countdownEvents: [CountdownEvent],
+        profile: ProfileInfo,
+        checkInDates: [Date],
+        lastTaskID: UUID?,
+        activeSession: ActiveSessionSnapshot?
+    ) {
+        self.version = version
+        self.tasks = tasks
+        self.sessions = sessions
+        self.countdownEvents = countdownEvents
+        self.profile = profile
+        self.checkInDates = checkInDates
+        self.lastTaskID = lastTaskID
+        self.activeSession = activeSession
+    }
 }
 
 /// 设置文件 (chrona_settings.json)
 struct SettingsStore: Codable {
     var version: Int
     var settings: AppSettings
+
+    /// 容错解码：缺失的字段使用默认值，保证新旧版本数据兼容。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings) ?? .default
+    }
+
+    init(version: Int, settings: AppSettings) {
+        self.version = version
+        self.settings = settings
+    }
 }
 
 /// 导出文件格式 — 只备份长期数据，不保存正在运行的计时会话。
@@ -315,7 +389,7 @@ struct ChronaExportFile: Codable {
     var countdownEvents: [CountdownEvent]
     var profile: ProfileInfo
     var settings: AppSettings
-    var checkInDates: [Date]?
+    var checkInDates: [Date]
     var lastTaskID: UUID?
     /// 备份内容签名；用于发现新版导出文件被手工修改或传输损坏。
     var signature: String?
@@ -333,40 +407,6 @@ struct ActiveSessionSnapshot: Codable {
     var pausedAccumulated: TimeInterval
     var isPaused: Bool
     var pauseDeadline: Date?
-}
-
-struct AppSnapshot: Codable {
-    var tasks: [TaskItem]
-    var sessions: [FocusSessionRecord]
-    var countdownEvents: [CountdownEvent]
-    var profile: ProfileInfo
-    var settings: AppSettings
-    var checkInDates: [Date]?
-    var lastTaskID: UUID?
-    var activeSession: ActiveSessionSnapshot?
-
-    static let `default` = AppSnapshot(
-        tasks: [
-            TaskItem(title: "Deep Work", mode: .pomodoro, order: 0),
-            TaskItem(
-                title: "Reading",
-                mode: .stopwatch,
-                backgroundName: "forest",
-                order: 1
-            ),
-            TaskItem(title: "Workout", mode: .countdown, countdownDuration: 15 * 60, backgroundName: "ocean", order: 2)
-        ],
-        sessions: [],
-        countdownEvents: [
-            CountdownEvent(title: "WWDC", date: Calendar.current.date(byAdding: .day, value: 48, to: .now) ?? .now),
-            CountdownEvent(title: "Project Launch", date: Calendar.current.date(byAdding: .day, value: -12, to: .now) ?? .now)
-        ],
-        profile: .default,
-        settings: .default,
-        checkInDates: [],
-        lastTaskID: nil,
-        activeSession: nil
-    )
 }
 
 enum TimeRange: String, CaseIterable, Identifiable {

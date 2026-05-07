@@ -435,7 +435,7 @@ private struct CountdownRow: View {
             )
         }
 
-        let parts = localizedTemplateParts(dayTemplate)
+        let parts = dayTemplate.localizedTemplateParts()
 
         return AnyView(
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -459,17 +459,6 @@ private struct CountdownRow: View {
         )
     }
 
-    // The localized template controls word order while the number keeps its display styling.
-    private func localizedTemplateParts(_ template: String) -> (prefix: String, suffix: String) {
-        let parts = template.components(separatedBy: "{count}")
-        guard parts.count == 2 else {
-            return ("", template)
-        }
-        return (
-            parts[0].trimmingCharacters(in: .whitespacesAndNewlines),
-            parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-    }
 }
 
 private enum CountdownDayState {
