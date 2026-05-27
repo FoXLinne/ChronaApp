@@ -106,16 +106,14 @@ struct ProfileView: View {
                 .presentationDragIndicator(.hidden)
             }
             .sheet(isPresented: $showProfileEditor) {
-                NavigationStack {
-                    ProfileEditorView(profile: $draftProfile) {
-                        showProfileEditor = false
-                    } onSave: {
-                        appModel.profile = draftProfile
-                        showProfileEditor = false
-                    }
+                ProfileEditorView(profile: $draftProfile) {
+                    showProfileEditor = false
+                } onSave: {
+                    appModel.profile = draftProfile
+                    showProfileEditor = false
                 }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -189,67 +187,41 @@ private struct ProfileEditorView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var cropSourceImage: UIImage?
     @State private var showAvatarCropper = false
-
-    private var previewName: String {
-        let trimmed = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Chrona" : trimmed
-    }
-
-    private var previewSignature: String {
-        let trimmed = profile.signature.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? String(localized: "profile.signature") : trimmed
-    }
+    @State private var showPhotoSelector = false
+    @State private var showFileImporter = false
+    @State private var showCamera = false
 
     var body: some View {
-        Form {
-            Section(String(localized: "profile.preview")) {
-                HStack(spacing: 16) {
-                    AvatarSymbolView(imageData: profile.avatarImageData, size: 84)
+        VStack(spacing: 24) {
+            avatarSection
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(previewName)
-                            .font(.title3.weight(.semibold))
+            inputFields
 
-                        Text(previewSignature)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
+            buttonSection
 
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 10)
-            }
-
-            Section(String(localized: "profile.user")) {
-                TextField(String(localized: "profile.name"), text: $profile.name)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled(true)
-
-                TextField(String(localized: "profile.signature"), text: $profile.signature, axis: .vertical)
-                    .lineLimit(2...3)
-            }
-
-            Section(String(localized: "profile.avatar")) {
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    Text(String(localized: "profile.avatar.photo.pick"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .tint(.accentColor)
-
-                if profile.avatarImageData != nil {
-                    Button(role: .destructive) {
-                        profile.avatarImageData = nil
-                    } label: {
-                        Text(String(localized: "profile.avatar.photo.remove"))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 36)
+        .photosPicker(isPresented: $showPhotoSelector, selection: $selectedPhotoItem, matching: .images)
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result,
+               url.startAccessingSecurityScopedResource() {
+                defer { url.stopAccessingSecurityScopedResource() }
+                if let data = try? Data(contentsOf: url),
+                   let image = UIImage(data: data) {
+                    cropSourceImage = image
+                    showAvatarCropper = true
                 }
             }
         }
-        .navigationTitle(String(localized: "common.edit"))
-        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPickerView { image in
+                cropSourceImage = image
+                showAvatarCropper = true
+            }
+            .ignoresSafeArea()
+        }
         .sheet(isPresented: $showAvatarCropper) {
             if let cropSourceImage {
                 NavigationStack {
@@ -266,13 +238,11 @@ private struct ProfileEditorView: View {
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
             guard let newItem else { return }
-
             Task {
                 guard
                     let rawData = try? await newItem.loadTransferable(type: Data.self),
                     let pickedImage = UIImage(data: rawData)
                 else { return }
-
                 await MainActor.run {
                     cropSourceImage = pickedImage
                     showAvatarCropper = true
@@ -280,44 +250,123 @@ private struct ProfileEditorView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button {
-                    onCancel()
-                } label: {
-                    Image(systemName: "xmark")
-                }
-            }
+    }
 
-            ToolbarItem(placement: .confirmationAction) {
-                Button {
-                    onSave()
+    private var avatarSection: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottomTrailing) {
+                AvatarSymbolView(imageData: profile.avatarImageData, size: 100)
+
+                Menu {
+                    if profile.avatarImageData != nil {
+                        Button(role: .destructive) {
+                            profile.avatarImageData = nil
+                        } label: {
+                            Label(String(localized: "profile.avatar.photo.remove"), systemImage: "trash")
+                        }
+                    }
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Label(String(localized: "profile.avatar.photo.file"), systemImage: "folder")
+                    }
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label(String(localized: "profile.avatar.photo.camera"), systemImage: "camera")
+                    }
+                    Button {
+                        showPhotoSelector = true
+                    } label: {
+                        Label(String(localized: "profile.avatar.photo.pick"), systemImage: "photo.on.rectangle")
+                    }
                 } label: {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.white)
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(.white))
+                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .tint(.accentColor)
+                .offset(x: 4, y: 4)
             }
         }
+    }
+
+    private var inputFields: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(String(localized: "profile.name"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                TextField("", text: $profile.name)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled(true)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(String(localized: "profile.signature"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                TextField("", text: $profile.signature, axis: .vertical)
+                    .lineLimit(2...3)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+                    }
+            }
+        }
+    }
+
+    private var buttonSection: some View {
+        VStack(spacing: 12) {
+            Button {
+                onSave()
+            } label: {
+                Text(String(localized: "profile.save"))
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color(.systemBackground))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(.label))
+                    )
+            }
+
+            Button {
+                onCancel()
+            } label: {
+                Text(String(localized: "common.cancel"))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 4)
     }
 
     private func processedAvatarData(from image: UIImage) -> Data? {
         let maxSide: CGFloat = 512
         let largestSide = max(image.size.width, image.size.height)
-
         guard largestSide > maxSide else {
             return image.jpegData(compressionQuality: 0.85)
         }
-
         let scale = maxSide / largestSide
         let targetSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         let resized = renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
-
         return resized.jpegData(compressionQuality: 0.85)
     }
 }
@@ -527,6 +576,42 @@ private struct AvatarCropperView: View {
         let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
         return renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+    }
+}
+
+private struct CameraPickerView: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCapture: onCapture)
+    }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let onCapture: (UIImage) -> Void
+
+        init(onCapture: @escaping (UIImage) -> Void) {
+            self.onCapture = onCapture
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                onCapture(image)
+            }
+            picker.dismiss(animated: true)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
         }
     }
 }

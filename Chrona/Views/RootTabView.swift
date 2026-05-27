@@ -47,6 +47,7 @@ struct RootTabView: View {
         }
         // 根据当前标签页和沉浸模式状态控制工具栏（标签栏）的可见性
         .toolbar(appModel.selectedTab == .active && appModel.isActiveImmersiveChromeHidden ? .hidden : .visible, for: .tabBar)
+        .sensoryFeedback(.impact, trigger: appModel.selectedTab)
         
         // 在视图顶部添加一个覆盖层，用于显示全局通知消息
         .overlay(alignment: .top) {

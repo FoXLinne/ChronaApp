@@ -2231,34 +2231,6 @@
         }
       }
     },
-    "profile.avatar" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Custom Avatar"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "カスタムアバター"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自定义头像"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自定義頭像"
-          }
-        }
-      }
-    },
     "profile.avatar.crop" : {
       "localizations" : {
         "en" : {
@@ -2315,6 +2287,26 @@
         }
       }
     },
+    "profile.avatar.photo.camera" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍照"
+          }
+        }
+      }
+    },
+    "profile.avatar.photo.file" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择文件"
+          }
+        }
+      }
+    },
     "profile.avatar.photo.pick" : {
       "localizations" : {
         "en" : {
@@ -2332,7 +2324,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从相册选择头像"
+            "value" : "照片库"
           }
         },
         "zh-Hant" : {
@@ -2360,7 +2352,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移除照片头像"
+            "value" : "删除"
           }
         },
         "zh-Hant" : {
@@ -2399,30 +2391,12 @@
         }
       }
     },
-    "profile.preview" : {
+    "profile.save" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preview"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "プレビュー"
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "预览"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "預覽"
+            "value" : "保存个人资料"
           }
         }
       }
@@ -2479,34 +2453,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "個性簽名"
-          }
-        }
-      }
-    },
-    "profile.user" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Custom Info"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ユーザー情報"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自定义信息"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自定義信息"
           }
         }
       }
@@ -4139,34 +4085,6 @@
         }
       }
     },
-    "settings.importData.confirm.message.legacy" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This file was exported from an older version of the app. Import will attempt to migrate the data automatically."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このファイルは古いバージョンのアプリからエクスポートされました。インポート時に自動的にデータを移行します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此文件来自旧版本应用，导入将尝试自动迁移数据格式。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此檔案來自舊版本應用程式，匯入將嘗試自動遷移資料格式。"
-          }
-        }
-      }
-    },
     "settings.importData.confirm.message.modified" : {
       "localizations" : {
         "en" : {
@@ -4247,34 +4165,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "匯入數據？"
-          }
-        }
-      }
-    },
-    "settings.importData.confirm.title.legacy" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Migrate from older version?"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "古いバージョンから移行しますか？"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "迁移旧版本数据？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "遷移舊版本資料？"
           }
         }
       }
@@ -4387,34 +4277,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "強制匯入"
-          }
-        }
-      }
-    },
-    "settings.importData.legacyNotice" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from older format — data has been migrated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "古い形式からインポートされました — データは移行されました"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已从旧格式导入，数据已自动迁移"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已從舊格式匯入，資料已自動遷移"
           }
         }
       }
@@ -6083,6 +5945,36 @@
         }
       }
     },
+    "task.detail.heatmapSection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本周专注"
+          }
+        }
+      }
+    },
+    "task.detail.sessionCount" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专注次数"
+          }
+        }
+      }
+    },
+    "task.detail.totalDuration" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总专注时长"
+          }
+        }
+      }
+    },
     "task.edit" : {
       "localizations" : {
         "en" : {
@@ -6616,7 +6508,7 @@
       }
     },
     "time.days" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

@@ -18,12 +18,45 @@ struct SharedDailyFocusDuration: Codable, Hashable, Identifiable {
 
 /// App Group 共享数据容器，主 App 与 Widget 之间传递专注数据。
 enum SharedStore {
-    static let appGroupID = "group.top.kaedekr.chrona"
+    private static let fallbackAppGroupID = "group.top.kaedekr.chrona"
+    private static let appGroupEntitlementKey = "com.apple.security.application-groups"
     private static let countdownEventsKey = "countdownEvents"
     private static let monthlyFocusDurationsKey = "monthlyFocusDurations"
 
+    /// SideStore 等重签流程可能改写 App Group，运行时优先使用最终 profile 里的 group。
+    static let appGroupID = signedAppGroupID ?? fallbackAppGroupID
+
     private static var defaults: UserDefaults? {
         UserDefaults(suiteName: appGroupID)
+    }
+
+    private static var signedAppGroupID: String? {
+        guard let profileURL = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let profileData = try? Data(contentsOf: profileURL),
+              let plistData = embeddedPlistData(from: profileData),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: plistData,
+                format: nil
+              ) as? [String: Any],
+              let entitlements = plist["Entitlements"] as? [String: Any],
+              let groups = entitlements[appGroupEntitlementKey] as? [String]
+        else {
+            return nil
+        }
+
+        return groups.first { $0.hasPrefix("group.") }
+    }
+
+    private static func embeddedPlistData(from profileData: Data) -> Data? {
+        guard let startMarker = "<?xml".data(using: .utf8),
+              let endMarker = "</plist>".data(using: .utf8),
+              let start = profileData.range(of: startMarker)?.lowerBound,
+              let end = profileData.range(of: endMarker, in: start..<profileData.endIndex)?.upperBound
+        else {
+            return nil
+        }
+
+        return profileData.subdata(in: start..<end)
     }
 
     /// 今日专注总时长（秒），由主 App 写入，Widget 读取。

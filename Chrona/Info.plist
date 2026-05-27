@@ -11,11 +11,7 @@
 			</array>
 		</dict>
 	</array>
-	<!-- 开启文件共享，使 Documents 目录在 iOS 文件 App 中可见 -->
 	<key>UIFileSharingEnabled</key>
-	<true/>
-	<!-- 允许 App 就地打开外部文档，配合文件共享使用 -->
-	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 </dict>
 </plist>

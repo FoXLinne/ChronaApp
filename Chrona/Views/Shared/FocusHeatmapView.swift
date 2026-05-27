@@ -9,6 +9,7 @@ struct FocusHeatmapView: View {
     let checkInDates: [Date]
     let showCheckInMarks: Bool
     let headerTotalDuration: TimeInterval?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 10) {
@@ -227,7 +228,7 @@ private extension FocusHeatmapView {
                 .aspectRatio(1, contentMode: .fill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(isToday ? Color.accentColor : .clear, lineWidth: 2)
+                        .stroke(isToday ? Color.secondary : Color.clear, lineWidth: 2)
                 )
 
             Text("\(Calendar.current.component(.day, from: date))")
@@ -288,11 +289,11 @@ private extension FocusHeatmapView {
         }
         let hours = duration / 3600
         switch hours {
-        case 0..<1:  return Color.accentColor.opacity(0.18)
-        case 1..<2:  return Color.accentColor.opacity(0.33)
+        case 0..<1:  return Color.accentColor.opacity(0.15)
+        case 1..<2:  return Color.accentColor.opacity(0.30)
         case 2..<3:  return Color.accentColor.opacity(0.50)
-        case 3..<5:  return Color.accentColor.opacity(0.70)
-        default:      return Color.accentColor // 全饱和强调色
+        case 3..<5:  return Color.accentColor.opacity(0.72)
+        default:      return Color.accentColor
         }
     }
 }

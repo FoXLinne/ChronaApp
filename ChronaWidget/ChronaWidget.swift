@@ -18,9 +18,7 @@ private enum WidgetFormatters {
 private struct WidgetBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .containerBackground(for: .widget) {
-                Color(.systemBackground)
-            }
+            .containerBackground(.ultraThinMaterial, for: .widget)
     }
 }
 
@@ -87,6 +85,11 @@ struct TodayFocusEntry: TimelineEntry {
 
 struct TodayFocusWidgetEntryView: View {
     var entry: TodayFocusProvider.Entry
+    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
+
+    private var durationColor: Color {
+        widgetRenderingMode == .fullColor ? Color("AccentColor") : .primary
+    }
 
     var body: some View {
         Link(destination: URL(string: "chrona://statistics")!) {
@@ -98,7 +101,8 @@ struct TodayFocusWidgetEntryView: View {
                 Color.clear.frame(height: 14)
 
                 WidgetDurationValue(duration: entry.duration)
-                    .foregroundStyle(Color("AccentColor"))
+                    .foregroundStyle(durationColor)
+                    .widgetAccentable()
 
                 Spacer(minLength: 8)
 
@@ -142,6 +146,7 @@ struct TodayFocusWidget: Widget {
         .configurationDisplayName(String(localized: "widget.todayFocus"))
         .description(String(localized: "widget.todayFocus.description"))
         .supportedFamilies([.systemSmall])
+        .containerBackgroundRemovable(true)
     }
 }
 
@@ -269,9 +274,14 @@ struct CountdownEventWidgetEntryView: View {
 private struct CountdownEventContent: View {
     let event: SharedCountdownEvent
     let now: Date
+    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
 
     private var state: CountdownWidgetState {
         CountdownWidgetState(eventDate: event.date, now: now)
+    }
+
+    private var valueColor: Color {
+        widgetRenderingMode == .fullColor ? state.valueColor : .primary
     }
 
     var body: some View {
@@ -285,10 +295,12 @@ private struct CountdownEventContent: View {
             if case .today = state {
                 Text(String(localized: "widget.countdown.today.label"))
                     .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color("AccentColor"))
+                    .foregroundStyle(valueColor)
+                    .widgetAccentable()
             } else {
                 WidgetNumberUnit(value: state.displayDays, unitKey: "time.days", numberSize: 32)
-                    .foregroundStyle(state.valueColor)
+                    .foregroundStyle(valueColor)
+                    .widgetAccentable()
             }
 
             Spacer(minLength: 8)
@@ -321,6 +333,7 @@ private struct CountdownEventEmptyContent: View {
 
             WidgetNumberUnit(value: 0, unitKey: "time.days", numberSize: 32)
                 .foregroundStyle(.secondary)
+                .widgetAccentable()
 
             Spacer(minLength: 8)
 
@@ -401,6 +414,7 @@ struct CountdownEventWidget: Widget {
         .configurationDisplayName(String(localized: "widget.countdown"))
         .description(String(localized: "widget.countdown.description"))
         .supportedFamilies([.systemSmall])
+        .containerBackgroundRemovable(true)
     }
 }
 
@@ -439,6 +453,7 @@ struct MonthHeatmapEntry: TimelineEntry {
 struct MonthHeatmapWidgetEntryView: View {
     var entry: MonthHeatmapProvider.Entry
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
 
     private var totalDuration: TimeInterval {
         entry.durations.reduce(0) { $0 + $1.duration }
@@ -456,10 +471,12 @@ struct MonthHeatmapWidgetEntryView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     heatmapTotalView
                         .frame(maxWidth: .infinity, alignment: .trailing)
+                        .widgetAccentable()
 
                     weekdayHeadersRow
 
                     heatmapGrid
+                        .widgetAccentable()
                 }
 
             }
@@ -570,10 +587,16 @@ struct MonthHeatmapWidgetEntryView: View {
     }
 
     private var secondaryInk: Color {
-        Color.secondary.opacity(colorScheme == .dark ? 0.56 : 0.42)
+        if widgetRenderingMode != .fullColor {
+            return .secondary
+        }
+        return Color.secondary.opacity(colorScheme == .dark ? 0.56 : 0.42)
     }
 
     private func heatmapColor(for duration: TimeInterval) -> Color {
+        if widgetRenderingMode != .fullColor {
+            return duration > 0 ? .primary.opacity(0.82) : .secondary.opacity(0.18)
+        }
         guard duration > 0 else {
             return colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.05)
         }
@@ -600,5 +623,6 @@ struct MonthHeatmapWidget: Widget {
         .description(String(localized: "widget.monthHeatmap.description"))
         .supportedFamilies([.systemSmall])
         .contentMarginsDisabled()
+        .containerBackgroundRemovable(true)
     }
 }
