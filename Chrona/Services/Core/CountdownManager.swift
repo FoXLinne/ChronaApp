@@ -40,14 +40,6 @@ enum CountdownManager {
         return updated
     }
 
-    /// 按 IndexSet 从指定列表中删除。
-    static func deleteEvents(at offsets: IndexSet, from target: [CountdownEvent], in events: [CountdownEvent]) -> [CountdownEvent] {
-        let ids = offsets.map { target[$0].id }
-        var updated = events
-        updated.removeAll(where: { ids.contains($0.id) })
-        return updated
-    }
-
     // MARK: - 筛选
 
     /// 未来的倒数日（不包括今天）。

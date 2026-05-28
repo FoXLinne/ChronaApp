@@ -86,6 +86,18 @@ struct TaskItem: Identifiable, Codable, Equatable, Hashable {
         self.order = order
     }
 
+    /// 容错解码：新版任务字段缺失时使用默认值，保证旧 App 数据仍可读取。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? "Imported Task"
+        mode = try c.decodeIfPresent(FocusMode.self, forKey: .mode) ?? .pomodoro
+        pomodoroPresetID = try c.decodeIfPresent(String.self, forKey: .pomodoroPresetID) ?? PomodoroPreset.default.id
+        countdownDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .countdownDuration) ?? 5 * 60
+        backgroundName = try c.decodeIfPresent(String.self, forKey: .backgroundName) ?? ThemePalette.defaultSeed
+        order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
+    }
+
     var pomodoroPreset: PomodoroPreset {
         PomodoroPreset.all.first(where: { $0.id == pomodoroPresetID }) ?? .default
     }
@@ -122,6 +134,21 @@ struct FocusSessionRecord: Identifiable, Codable {
         self.focusedDuration = focusedDuration
         self.wasCompleted = wasCompleted
         self.wasAbandoned = wasAbandoned
+    }
+
+    /// 容错解码：专注记录新增字段时，旧记录缺失字段不阻断整体数据读取。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let fallbackDate = Date()
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        taskID = try c.decodeIfPresent(UUID.self, forKey: .taskID)
+        taskTitle = try c.decodeIfPresent(String.self, forKey: .taskTitle) ?? "Imported Task"
+        mode = try c.decodeIfPresent(FocusMode.self, forKey: .mode) ?? .pomodoro
+        startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt) ?? fallbackDate
+        endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt) ?? startedAt
+        focusedDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .focusedDuration) ?? max(0, endedAt.timeIntervalSince(startedAt))
+        wasCompleted = try c.decodeIfPresent(Bool.self, forKey: .wasCompleted) ?? false
+        wasAbandoned = try c.decodeIfPresent(Bool.self, forKey: .wasAbandoned) ?? false
     }
 }
 
@@ -164,6 +191,23 @@ struct ProfileInfo: Codable, Equatable {
     var signature: String
 
     static let `default` = ProfileInfo(name: "Chrona", avatarSymbol: "person.crop.circle.fill", avatarImageData: nil, signature: "Stay focused.")
+
+    /// 容错解码：旧版个人资料缺少签名或头像字段时，使用默认资料补齐。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self.default
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? d.name
+        avatarSymbol = try c.decodeIfPresent(String.self, forKey: .avatarSymbol) ?? d.avatarSymbol
+        avatarImageData = try c.decodeIfPresent(Data.self, forKey: .avatarImageData)
+        signature = try c.decodeIfPresent(String.self, forKey: .signature) ?? d.signature
+    }
+
+    init(name: String, avatarSymbol: String, avatarImageData: Data?, signature: String) {
+        self.name = name
+        self.avatarSymbol = avatarSymbol
+        self.avatarImageData = avatarImageData
+        self.signature = signature
+    }
 }
 
 struct AppSettings: Codable, Equatable {
@@ -319,8 +363,8 @@ struct DataStore: Codable {
         ],
         sessions: [],
         countdownEvents: [
-            CountdownEvent(title: "WWDC", date: Calendar.current.date(byAdding: .day, value: 48, to: .now) ?? .now),
-            CountdownEvent(title: "Project Launch", date: Calendar.current.date(byAdding: .day, value: -12, to: .now) ?? .now)
+            CountdownEvent(title: "WWDC", date: defaultDate(year: 2026, month: 6, day: 8)),
+            CountdownEvent(title: "Chrona 开发开始", date: defaultDate(year: 2026, month: 4, day: 10))
         ],
         profile: .default,
         checkInDates: [],
@@ -360,6 +404,11 @@ struct DataStore: Codable {
         self.lastTaskID = lastTaskID
         self.activeSession = activeSession
     }
+
+    /// 固定默认倒数日样例，避免每次构建日期变化导致示例日期漂移。
+    private static func defaultDate(year: Int, month: Int, day: Int) -> Date {
+        Calendar.current.date(from: DateComponents(year: year, month: month, day: day)) ?? Date(timeIntervalSince1970: 0)
+    }
 }
 
 /// 设置文件 (chrona_settings.json)
@@ -393,6 +442,45 @@ struct ChronaExportFile: Codable {
     var lastTaskID: UUID?
     /// 备份内容签名；用于发现新版导出文件被手工修改或传输损坏。
     var signature: String?
+
+    init(
+        formatVersion: Int,
+        exportedAt: Date,
+        tasks: [TaskItem],
+        sessions: [FocusSessionRecord],
+        countdownEvents: [CountdownEvent],
+        profile: ProfileInfo,
+        settings: AppSettings,
+        checkInDates: [Date],
+        lastTaskID: UUID?,
+        signature: String?
+    ) {
+        self.formatVersion = formatVersion
+        self.exportedAt = exportedAt
+        self.tasks = tasks
+        self.sessions = sessions
+        self.countdownEvents = countdownEvents
+        self.profile = profile
+        self.settings = settings
+        self.checkInDates = checkInDates
+        self.lastTaskID = lastTaskID
+        self.signature = signature
+    }
+
+    /// 备份中的倒数日是长期用户数据，缺少该字段时判定文件不完整，避免恢复时误覆盖为空。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try c.decodeIfPresent(Int.self, forKey: .formatVersion) ?? 1
+        exportedAt = try c.decodeIfPresent(Date.self, forKey: .exportedAt) ?? Date()
+        tasks = try c.decodeIfPresent([TaskItem].self, forKey: .tasks) ?? []
+        sessions = try c.decodeIfPresent([FocusSessionRecord].self, forKey: .sessions) ?? []
+        countdownEvents = try c.decode([CountdownEvent].self, forKey: .countdownEvents)
+        profile = try c.decodeIfPresent(ProfileInfo.self, forKey: .profile) ?? .default
+        settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings) ?? .default
+        checkInDates = try c.decodeIfPresent([Date].self, forKey: .checkInDates) ?? []
+        lastTaskID = try c.decodeIfPresent(UUID.self, forKey: .lastTaskID)
+        signature = try c.decodeIfPresent(String.self, forKey: .signature)
+    }
 }
 
 struct ActiveSessionSnapshot: Codable {

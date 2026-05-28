@@ -269,7 +269,11 @@ private struct TaskGlassCard: View {
         }
         .contextMenu {
             if !isEditing {
-                Button(String(localized: "task.start")) { _ = appModel.startTask(task) }
+                Button(String(localized: "task.start")) {
+                    withAnimation(.smooth) {
+                        _ = appModel.startTask(task)
+                    }
+                }
             }
             Button(String(localized: "common.edit")) { onEdit() }
             Divider()
@@ -283,7 +287,11 @@ private struct TaskGlassCard: View {
 
             if !isEditing {
                 ZStack(alignment: .bottomTrailing) {
-                    Button { _ = appModel.startTask(task) } label: {
+                    Button {
+                        withAnimation(.smooth) {
+                            _ = appModel.startTask(task)
+                        }
+                    } label: {
                         Text(controlLabel).font(.headline.weight(.semibold))
                     }
                     .foregroundStyle(controlTint)

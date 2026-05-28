@@ -169,6 +169,7 @@ struct ActiveSessionView: View {
                 }
 
             }
+            .animation(.smooth, value: appModel.activeSession == nil)
             .onChange(of: isLandscape) { _, newValue in isLandscapeForOverlay = newValue }
         }
         .transition(.opacity)

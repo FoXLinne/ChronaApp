@@ -243,12 +243,6 @@ final class AppViewModel: ObservableObject {
         syncWidgetData()
     }
 
-    func deleteCountdownEvents(at offsets: IndexSet, from future: Bool) {
-        let target = future ? futureEvents : pastEvents
-        countdownEvents = CountdownManager.deleteEvents(at: offsets, from: target, in: countdownEvents)
-        syncWidgetData()
-    }
-
     var futureEvents: [CountdownEvent] {
         CountdownManager.futureEvents(in: countdownEvents, now: now)
     }
@@ -949,6 +943,7 @@ final class AppViewModel: ObservableObject {
         persistence.save(data: dataStore)
         persistence.save(settings: currentSettingsStore())
         notifications.cancelDailyReminder()
+        notifications.cancelAllCountdownReminders()
         refreshDerivedState(shouldSyncActivity: true)
         showNotice(String(localized: "settings.clearData.success"))
     }
@@ -1012,6 +1007,7 @@ final class AppViewModel: ObservableObject {
 
         refreshDerivedState(shouldSyncActivity: true)
         syncReminder()
+        syncCountdownReminders()
 
         return ImportStatus.success(
             fileVersion: result.fileVersion,
