@@ -11,7 +11,8 @@ struct SettingsView: View {
     @State private var pendingImportResult: Persistence.ImportResult?
     @State private var showImportPicker = false
     @State private var showImportConfirm = false
-    @State private var importFileVersion = 0
+    @State private var importSourceAppVersion: String?
+    @State private var importSourceBuildNumber: Int?
     @State private var importSignatureMismatch = false
 
     private var isRuntimeLocked: Bool {
@@ -226,7 +227,7 @@ struct SettingsView: View {
     private var importConfirmTitle: String {
         if importSignatureMismatch {
             return String(localized: "settings.importData.confirm.title.modified")
-        } else if importFileVersion > ExportFormatVersion.current {
+        } else if hasImportVersionRisk {
             return String(localized: "settings.importData.confirm.title.newer")
         } else {
             return String(localized: "settings.importData.confirm.title")
@@ -234,13 +235,68 @@ struct SettingsView: View {
     }
 
     private var importConfirmMessage: String {
+        var sections = [
+            String(localized: "settings.importData.confirm.message"),
+            importVersionSummary
+        ]
+
+        if let riskMessage = importRiskMessage {
+            sections.append(riskMessage)
+        }
+
+        return sections.joined(separator: "\n\n")
+    }
+
+    private var importRiskMessage: String? {
         if importSignatureMismatch {
             return String(localized: "settings.importData.confirm.message.modified")
-        } else if importFileVersion > ExportFormatVersion.current {
-            return String(format: String(localized: "settings.importData.confirm.message.newer"), importFileVersion, ExportFormatVersion.current)
-        } else {
-            return String(localized: "settings.importData.confirm.message")
         }
+        if isImportFromNewerBuild {
+            return String(localized: "settings.importData.confirm.message.newer")
+        }
+        if isImportFromOlderBuild {
+            return String(localized: "settings.importData.confirm.message.older")
+        }
+        if isImportFromUnknownBuild {
+            return String(localized: "settings.importData.confirm.message.unknown")
+        }
+        return nil
+    }
+
+    private var importVersionSummary: String {
+        String(
+            format: String(localized: "settings.importData.confirm.message.versionSummary"),
+            importSourceDisplayText,
+            AppBuildInfo.current.displayText
+        )
+    }
+
+    private var hasImportVersionRisk: Bool {
+        isImportFromNewerBuild || isImportFromOlderBuild || isImportFromUnknownBuild
+    }
+
+    private var isImportFromUnknownBuild: Bool {
+        importSourceBuildNumber == nil
+    }
+
+    private var isImportFromNewerBuild: Bool {
+        guard let sourceBuild = importSourceBuildNumber,
+              let currentBuild = AppBuildInfo.current.buildNumber else { return false }
+        return sourceBuild > currentBuild
+    }
+
+    private var isImportFromOlderBuild: Bool {
+        guard let sourceBuild = importSourceBuildNumber,
+              let currentBuild = AppBuildInfo.current.buildNumber else { return false }
+        return sourceBuild < currentBuild
+    }
+
+    private var importSourceDisplayText: String {
+        guard let sourceBuild = importSourceBuildNumber else {
+            return importSourceAppVersion ?? String(localized: "settings.importData.version.unknown")
+        }
+        let sourceVersion = importSourceAppVersion ?? String(localized: "settings.importData.version.unknown")
+        return "\(sourceVersion) (\(sourceBuild))"
     }
 
     private var fixedSortBinding: Binding<Bool> {
@@ -354,7 +410,8 @@ struct SettingsView: View {
 
                 // 预检结果会在确认后直接复用，避免重复解码同一份备份文件。
                 pendingImportResult = importResult
-                importFileVersion = importResult.fileVersion
+                importSourceAppVersion = importResult.sourceAppVersion
+                importSourceBuildNumber = importResult.sourceBuildNumber
                 importSignatureMismatch = importResult.isSignatureMismatch
                 showImportConfirm = true
             } catch {
@@ -370,10 +427,14 @@ struct SettingsView: View {
     /// 执行最终的导入操作
     private func performImport() {
         guard let importResult = pendingImportResult else { return }
-        defer { pendingImportResult = nil }
+        defer {
+            pendingImportResult = nil
+            importSourceAppVersion = nil
+            importSourceBuildNumber = nil
+        }
 
         let status = appModel.importData(importResult)
-        guard case .success(let fileVersion, let isSignatureMismatch) = status else {
+        guard case .success(_, _, let sourceBuildNumber, let isSignatureMismatch) = status else {
             appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
             return
         }
@@ -384,7 +445,9 @@ struct SettingsView: View {
         // 版本提示
         if isSignatureMismatch {
             appModel.showGlobalNotice(String(localized: "settings.importData.modifiedNotice"))
-        } else if fileVersion > ExportFormatVersion.current {
+        } else if let sourceBuildNumber,
+                  let currentBuild = AppBuildInfo.current.buildNumber,
+                  sourceBuildNumber != currentBuild {
             appModel.showGlobalNotice(String(localized: "settings.importData.newerWarning"))
         } else {
             appModel.showGlobalNotice(String(localized: "settings.importData.success"))

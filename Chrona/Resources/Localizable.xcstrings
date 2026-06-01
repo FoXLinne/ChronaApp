@@ -4074,7 +4074,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这将覆盖所有现有数据。继续？"
+            "value" : "导入会覆盖当前全部数据。"
           }
         },
         "zh-Hant" : {
@@ -4102,7 +4102,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法校验备份签名，此文件可能被修改或损坏。导入时应用将自动修正可能不安全的字段，可能出现损坏或异常数据。继续？"
+            "value" : "备份签名校验失败，文件可能被修改或损坏。"
           }
         },
         "zh-Hant" : {
@@ -4130,13 +4130,43 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此文件来自更高版本（v%lld → v%lld），可能存在兼容性问题。继续？"
+            "value" : "备份来自较高版本，强制导入可能存在兼容风险。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "此檔案來自更高版本（v%lld → v%lld），繼續匯入可能導致異常，後果自負。"
+          }
+        }
+      }
+    },
+    "settings.importData.confirm.message.older" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "备份来自较低版本，缺失字段会使用默认值补齐。"
+          }
+        }
+      }
+    },
+    "settings.importData.confirm.message.unknown" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "备份缺少来源版本信息，无法判断版本高低。请确认来源可靠。"
+          }
+        }
+      }
+    },
+    "settings.importData.confirm.message.versionSummary" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "备份来源：%@\n当前版本：%@"
           }
         }
       }
@@ -4186,7 +4216,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⚠️ 备份可能被修改或已损坏"
+            "value" : "备份可能被修改或已损坏"
           }
         },
         "zh-Hant" : {
@@ -4202,25 +4232,25 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⚠️ Version Mismatch"
+            "value" : "Version Mismatch"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⚠️ バージョン不一致"
+            "value" : "バージョン不一致"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⚠️ 版本不匹配"
+            "value" : "版本不匹配"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⚠️ 版本不符"
+            "value" : "版本不符"
           }
         }
       }
@@ -4326,13 +4356,23 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已从更高版本导入，可能存在兼容问题，请谨慎使用"
+            "value" : "已导入不同构建的备份，请确认数据表现正常"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "已從更高版本匯入，可能存在相容問題，請謹慎使用"
+          }
+        }
+      }
+    },
+    "settings.importData.version.unknown" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知版本"
           }
         }
       }

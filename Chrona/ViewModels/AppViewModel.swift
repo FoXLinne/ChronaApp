@@ -1011,12 +1011,19 @@ final class AppViewModel: ObservableObject {
 
         return ImportStatus.success(
             fileVersion: result.fileVersion,
+            sourceAppVersion: result.sourceAppVersion,
+            sourceBuildNumber: result.sourceBuildNumber,
             isSignatureMismatch: result.isSignatureMismatch
         )
     }
 
     enum ImportStatus {
-        case success(fileVersion: Int, isSignatureMismatch: Bool)
+        case success(
+            fileVersion: Int,
+            sourceAppVersion: String?,
+            sourceBuildNumber: Int?,
+            isSignatureMismatch: Bool
+        )
         case failed
 
         var isSuccess: Bool {

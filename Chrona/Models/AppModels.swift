@@ -433,6 +433,8 @@ struct SettingsStore: Codable {
 struct ChronaExportFile: Codable {
     let formatVersion: Int
     let exportedAt: Date
+    var sourceAppVersion: String?
+    var sourceBuildNumber: Int?
     var tasks: [TaskItem]
     var sessions: [FocusSessionRecord]
     var countdownEvents: [CountdownEvent]
@@ -446,6 +448,8 @@ struct ChronaExportFile: Codable {
     init(
         formatVersion: Int,
         exportedAt: Date,
+        sourceAppVersion: String?,
+        sourceBuildNumber: Int?,
         tasks: [TaskItem],
         sessions: [FocusSessionRecord],
         countdownEvents: [CountdownEvent],
@@ -457,6 +461,8 @@ struct ChronaExportFile: Codable {
     ) {
         self.formatVersion = formatVersion
         self.exportedAt = exportedAt
+        self.sourceAppVersion = sourceAppVersion
+        self.sourceBuildNumber = sourceBuildNumber
         self.tasks = tasks
         self.sessions = sessions
         self.countdownEvents = countdownEvents
@@ -472,6 +478,8 @@ struct ChronaExportFile: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         formatVersion = try c.decodeIfPresent(Int.self, forKey: .formatVersion) ?? 1
         exportedAt = try c.decodeIfPresent(Date.self, forKey: .exportedAt) ?? Date()
+        sourceAppVersion = try c.decodeIfPresent(String.self, forKey: .sourceAppVersion)
+        sourceBuildNumber = try c.decodeIfPresent(Int.self, forKey: .sourceBuildNumber)
         tasks = try c.decodeIfPresent([TaskItem].self, forKey: .tasks) ?? []
         sessions = try c.decodeIfPresent([FocusSessionRecord].self, forKey: .sessions) ?? []
         countdownEvents = try c.decode([CountdownEvent].self, forKey: .countdownEvents)

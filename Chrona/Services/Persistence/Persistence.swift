@@ -89,6 +89,8 @@ final class Persistence {
         var export = ChronaExportFile(
             formatVersion: ExportFormatVersion.current,
             exportedAt: Date(),
+            sourceAppVersion: AppBuildInfo.current.version,
+            sourceBuildNumber: AppBuildInfo.current.buildNumber,
             tasks: dataStore.tasks,
             sessions: dataStore.sessions,
             countdownEvents: dataStore.countdownEvents,
@@ -117,6 +119,9 @@ final class Persistence {
         let lastTaskID: UUID?
         /// 导入文件的格式版本号，若为旧格式则为 0
         let fileVersion: Int
+        /// 备份来源 App 版本和构建号，仅用于导入前提示用户判断风险。
+        let sourceAppVersion: String?
+        let sourceBuildNumber: Int?
         /// 新版备份签名是否通过；旧备份没有签名，保持兼容导入。
         let isSignatureVerified: Bool
         /// 文件带有签名但校验失败，说明备份可能被修改或损坏。
@@ -138,6 +143,8 @@ final class Persistence {
                 checkInDates: export.checkInDates,
                 lastTaskID: export.lastTaskID,
                 fileVersion: export.formatVersion,
+                sourceAppVersion: export.sourceAppVersion,
+                sourceBuildNumber: export.sourceBuildNumber,
                 isSignatureVerified: hasSignature && isSignatureVerified,
                 isSignatureMismatch: hasSignature && !isSignatureVerified
             )
@@ -152,6 +159,8 @@ private extension Persistence {
     struct ExportSigningPayload: Codable {
         let formatVersion: Int
         let exportedAt: Date
+        var sourceAppVersion: String?
+        var sourceBuildNumber: Int?
         var tasks: [TaskItem]
         var sessions: [FocusSessionRecord]
         var countdownEvents: [CountdownEvent]
@@ -172,6 +181,8 @@ private extension Persistence {
         ExportSigningPayload(
             formatVersion: export.formatVersion,
             exportedAt: export.exportedAt,
+            sourceAppVersion: export.sourceAppVersion,
+            sourceBuildNumber: export.sourceBuildNumber,
             tasks: export.tasks,
             sessions: export.sessions,
             countdownEvents: export.countdownEvents,
@@ -209,6 +220,8 @@ private extension Persistence {
         checkInDates: [Date],
         lastTaskID: UUID?,
         fileVersion: Int,
+        sourceAppVersion: String?,
+        sourceBuildNumber: Int?,
         isSignatureVerified: Bool,
         isSignatureMismatch: Bool
     ) -> ImportResult {
@@ -224,6 +237,8 @@ private extension Persistence {
             checkInDates: normalizedCheckInDates(checkInDates),
             lastTaskID: lastTaskID.flatMap { taskIDs.contains($0) ? $0 : nil },
             fileVersion: fileVersion,
+            sourceAppVersion: sourceAppVersion,
+            sourceBuildNumber: sourceBuildNumber,
             isSignatureVerified: isSignatureVerified,
             isSignatureMismatch: isSignatureMismatch
         )
@@ -337,5 +352,22 @@ private extension Persistence {
 
     func clampedInt(_ value: Int, min: Int, max: Int) -> Int {
         Swift.min(Swift.max(value, min), max)
+    }
+}
+
+struct AppBuildInfo {
+    let version: String
+    let buildNumber: Int?
+
+    static var current: AppBuildInfo {
+        let bundle = Bundle.main
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+        let buildString = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return AppBuildInfo(version: version, buildNumber: buildString.flatMap(Int.init))
+    }
+
+    var displayText: String {
+        guard let buildNumber else { return version }
+        return "\(version) (\(buildNumber))"
     }
 }
