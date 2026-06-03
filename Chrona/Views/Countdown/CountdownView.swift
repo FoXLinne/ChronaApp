@@ -306,17 +306,34 @@ private struct CountdownEditorView: View {
     @State private var date: Date
     @State private var includesTime: Bool
     @State private var notificationEnabled: Bool
+    @State private var showDiscardChangesConfirm = false
 
     let event: CountdownEvent?
     let onSave: (CountdownEvent) -> Void
 
+    private let initialTitle: String
+    private let initialDate: Date
+    private let initialIncludesTime: Bool
+    private let initialNotificationEnabled: Bool
+
     init(event: CountdownEvent?, onSave: @escaping (CountdownEvent) -> Void) {
         self.event = event
         self.onSave = onSave
-        _title = State(initialValue: event?.title ?? "")
-        _date = State(initialValue: event?.date ?? .now)
-        _includesTime = State(initialValue: event?.includesTime ?? false)
-        _notificationEnabled = State(initialValue: event?.notificationEnabled ?? false)
+
+        let title = event?.title ?? ""
+        let date = event?.date ?? .now
+        let includesTime = event?.includesTime ?? false
+        let notificationEnabled = event?.notificationEnabled ?? false
+
+        initialTitle = title
+        initialDate = date
+        initialIncludesTime = includesTime
+        initialNotificationEnabled = notificationEnabled
+
+        _title = State(initialValue: title)
+        _date = State(initialValue: date)
+        _includesTime = State(initialValue: includesTime)
+        _notificationEnabled = State(initialValue: notificationEnabled)
     }
 
     var body: some View {
@@ -339,9 +356,19 @@ private struct CountdownEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
-                        dismiss()
+                        requestDismiss()
                     } label: {
                         Image(systemName: "xmark")
+                    }
+                    .confirmationDialog(
+                        String(localized: "editor.discardChanges.title"),
+                        isPresented: $showDiscardChangesConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button(String(localized: "editor.discardChanges.action"), role: .destructive) {
+                            dismiss()
+                        }
+                        Button(String(localized: "common.cancel"), role: .cancel) {}
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -357,7 +384,16 @@ private struct CountdownEditorView: View {
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .interactiveDismissDisabled(hasUnsavedChanges)
         }
+    }
+
+    private func requestDismiss() {
+        guard hasUnsavedChanges else {
+            dismiss()
+            return
+        }
+        showDiscardChangesConfirm = true
     }
 
     private func save() {
@@ -368,6 +404,13 @@ private struct CountdownEditorView: View {
         output.notificationEnabled = notificationEnabled
         onSave(output)
         dismiss()
+    }
+
+    private var hasUnsavedChanges: Bool {
+        title != initialTitle
+            || date != initialDate
+            || includesTime != initialIncludesTime
+            || notificationEnabled != initialNotificationEnabled
     }
 }
 

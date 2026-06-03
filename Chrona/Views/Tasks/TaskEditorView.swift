@@ -11,20 +11,39 @@ struct TaskEditorView: View {
     @State private var backgroundName: String
     @State private var showAdvancedCountdownEditor = false
     @State private var customCountdownMinutesText = ""
+    @State private var showDiscardChangesConfirm = false
 
     let task: TaskItem?
     let onSave: (TaskItem) -> Void
 
+    private let initialTitle: String
+    private let initialMode: FocusMode
+    private let initialPresetID: String
+    private let initialCountdownDuration: TimeInterval
+    private let initialBackgroundName: String
     private let backgrounds = ThemePalette.seeds
 
     init(task: TaskItem?, onSave: @escaping (TaskItem) -> Void) {
         self.task = task
         self.onSave = onSave
-        _title = State(initialValue: task?.title ?? "")
-        _mode = State(initialValue: task?.mode ?? .pomodoro)
-        _presetID = State(initialValue: task?.pomodoroPresetID ?? PomodoroPreset.default.id)
-        _countdownDuration = State(initialValue: task?.countdownDuration ?? 5 * 60)
-        _backgroundName = State(initialValue: task?.backgroundName ?? ThemePalette.defaultSeed)
+
+        let title = task?.title ?? ""
+        let mode = task?.mode ?? .pomodoro
+        let presetID = task?.pomodoroPresetID ?? PomodoroPreset.default.id
+        let countdownDuration = task?.countdownDuration ?? 5 * 60
+        let backgroundName = task?.backgroundName ?? ThemePalette.defaultSeed
+
+        initialTitle = title
+        initialMode = mode
+        initialPresetID = presetID
+        initialCountdownDuration = countdownDuration
+        initialBackgroundName = backgroundName
+
+        _title = State(initialValue: title)
+        _mode = State(initialValue: mode)
+        _presetID = State(initialValue: presetID)
+        _countdownDuration = State(initialValue: countdownDuration)
+        _backgroundName = State(initialValue: backgroundName)
     }
 
     var body: some View {
@@ -92,9 +111,19 @@ struct TaskEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
-                        dismiss()
+                        requestDismiss()
                     } label: {
                         Image(systemName: "xmark")
+                    }
+                    .confirmationDialog(
+                        String(localized: "editor.discardChanges.title"),
+                        isPresented: $showDiscardChangesConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button(String(localized: "editor.discardChanges.action"), role: .destructive) {
+                            dismiss()
+                        }
+                        Button(String(localized: "common.cancel"), role: .cancel) {}
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -119,7 +148,16 @@ struct TaskEditorView: View {
             } message: {
                 Text(String(localized: "task.countdown.advanced.message"))
             }
+            .interactiveDismissDisabled(hasUnsavedChanges)
         }
+    }
+
+    private func requestDismiss() {
+        guard hasUnsavedChanges else {
+            dismiss()
+            return
+        }
+        showDiscardChangesConfirm = true
     }
 
     private func save() {
@@ -156,6 +194,14 @@ struct TaskEditorView: View {
 
     private var isDuplicateName: Bool {
         _appModel.wrappedValue.isTaskNameDuplicate(title, excluding: task?.id)
+    }
+
+    private var hasUnsavedChanges: Bool {
+        title != initialTitle
+            || mode != initialMode
+            || presetID != initialPresetID
+            || countdownDuration != initialCountdownDuration
+            || backgroundName != initialBackgroundName
     }
 
     private var countdownSliderMinutesBinding: Binding<Double> {

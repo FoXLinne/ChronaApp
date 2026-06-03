@@ -1051,6 +1051,26 @@
         }
       }
     },
+    "editor.discardChanges.action" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放弃更改"
+          }
+        }
+      }
+    },
+    "editor.discardChanges.title" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定要放弃更改吗？"
+          }
+        }
+      }
+    },
     "common.done" : {
       "localizations" : {
         "en" : {
