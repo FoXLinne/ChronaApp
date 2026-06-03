@@ -1,9 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppViewModel
+    @Environment(\.openURL) private var openURL
 
     @State private var draft = AppSettings.default
     @State private var showClearDataConfirm = false
@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var importSourceAppVersion: String?
     @State private var importSourceBuildNumber: Int?
     @State private var importSignatureMismatch = false
+    @State private var exportFileURL: URL?
 
     private var isRuntimeLocked: Bool {
         appModel.activeSession != nil
@@ -140,9 +141,7 @@ struct SettingsView: View {
 
             Section {
                 Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
+                    openAppSettings()
                 } label: {
                     Text(String(localized: "settings.systemSettings.action"))
                 }
@@ -153,10 +152,13 @@ struct SettingsView: View {
             }
 
             Section(String(localized: "settings.category.data")) {
-                Button {
-                    exportData()
-                } label: {
-                    Text(String(localized: "settings.exportData"))
+                if let exportFileURL {
+                    ShareLink(item: exportFileURL) {
+                        Text(String(localized: "settings.exportData"))
+                    }
+                } else {
+                    Button(String(localized: "settings.exportData")) {}
+                        .disabled(true)
                 }
                 
                 Button {
@@ -182,12 +184,16 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             draft = appModel.settings
+            prepareExportFile()
         }
         .onChange(of: draft) { _, newDraft in
             let merged = mergedSettingsForRuntimeSafety(from: newDraft)
             if merged != appModel.settings {
                 appModel.settings = merged
             }
+        }
+        .onChange(of: appModel.settings) { _, _ in
+            prepareExportFile()
         }
         .alert(String(localized: "settings.clearData.confirm.title"), isPresented: $showClearDataConfirm) {
             Button(String(localized: "common.cancel"), role: .cancel) {}
@@ -345,6 +351,26 @@ struct SettingsView: View {
         }
     }
 
+    /// 提前生成分享文件，避免 ShareLink 首次弹出时同步编码和写入数据。
+    private func prepareExportFile() {
+        guard let data = appModel.exportData() else {
+            exportFileURL = nil
+            return
+        }
+        let fileName = "chrona_data_" + Date.now.formatted(.dateTime.year().month().day())
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(fileName)
+            .appendingPathExtension("json")
+
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            exportFileURL = fileURL
+        } catch {
+            print("Export failed: \(error)")
+            exportFileURL = nil
+        }
+    }
+
     private func mergedSettingsForRuntimeSafety(from candidate: AppSettings) -> AppSettings {
         guard appModel.activeSession != nil else { return candidate }
 
@@ -356,36 +382,12 @@ struct SettingsView: View {
         return merged
     }
 
-    // MARK: - 数据导入导出 (Persistence)
-    
-    /// 导出数据：生成 JSON 文件并调起系统分享面板
-    private func exportData() {
-        guard let data = appModel.exportData() else { return }
-        
-        let fileName = "chrona_data_" + Date.now.formatted(.dateTime.year().month().day())
-        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName).appendingPathExtension("json")
-        
-        do {
-            try data.write(to: fileURL)
-            let activityViewController = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-            
-            // 在 iPad 上需要配置 popoverPresentationController 避免崩溃
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let rootViewController = windowScene.windows.first?.rootViewController {
-                
-                if let popover = activityViewController.popoverPresentationController {
-                    let bounds = windowScene.screen.bounds
-                    popover.sourceView = rootViewController.view
-                    popover.sourceRect = CGRect(x: bounds.width / 2, y: bounds.height / 2, width: 0, height: 0)
-                    popover.permittedArrowDirections = []
-                }
-                
-                rootViewController.present(activityViewController, animated: true)
-            }
-        } catch {
-            print("Export failed: \(error)")
-        }
+    private func openAppSettings() {
+        guard let url = URL(string: "app-settings:") else { return }
+        openURL(url)
     }
+
+    // MARK: - 数据导入导出 (Persistence)
     
     /// 处理文件选择器的结果
     private func handleImportResult(_ result: Result<[URL], Error>) {
@@ -441,6 +443,7 @@ struct SettingsView: View {
 
         // 导入成功后同步刷新 UI 草稿状态
         draft = appModel.settings
+        prepareExportFile()
 
         // 版本提示
         if isSignatureMismatch {
