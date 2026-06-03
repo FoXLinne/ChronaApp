@@ -667,13 +667,13 @@ final class AppViewModel: ObservableObject {
                     || newSettings.dailyReminderHour != self.settings.dailyReminderHour
                     || newSettings.dailyReminderMinute != self.settings.dailyReminderMinute
             }
-            .sink { [weak self] _ in self?.syncReminder() }
+            .sink { [weak self] newSettings in self?.syncReminder(settings: newSettings) }
             .store(in: &cancellables)
 
         // 提醒同步：当天完成专注后自动取消当天提醒
         $sessions
             .dropFirst()
-            .sink { [weak self] _ in self?.syncReminder() }
+            .sink { [weak self] newSessions in self?.syncReminder(sessions: newSessions) }
             .store(in: &cancellables)
 
         // Live Activity 同步：开关变更时立即启停灵动岛/锁屏实时活动
@@ -697,7 +697,11 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - 内部：通知
 
-    private func syncReminder() {
+    private func syncReminder(settings effectiveSettings: AppSettings? = nil, sessions effectiveSessions: [FocusSessionRecord]? = nil) {
+        // @Published 在 willSet 发出新值；提醒同步优先使用 publisher 传入的新状态。
+        let settings = effectiveSettings ?? self.settings
+        let sessions = effectiveSessions ?? self.sessions
+
         guard settings.dailyReminderEnabled else {
             notifications.cancelDailyReminder()
             return
