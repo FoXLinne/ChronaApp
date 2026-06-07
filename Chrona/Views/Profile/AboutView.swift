@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// 关于应用页面，展示 App Icon、应用信息、贡献者和本地化语言支持
 struct AboutView: View {
@@ -7,8 +6,6 @@ struct AboutView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private let appIconTileSize: CGFloat = 128
-    private let defaultIconFileName = "appicon-iOS-Default-1024x1024@1x.png"
-    private let darkIconFileName = "appicon-iOS-Dark-1024x1024@1x.png"
 
     private var appVersionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
@@ -20,44 +17,17 @@ struct AboutView: View {
         "\(String(localized: "about.version")) \(appVersionText)"
     }
 
-    private var aboutIconFileName: String {
-        colorScheme == .dark ? darkIconFileName : defaultIconFileName
-    }
-
-    private var aboutIconImage: UIImage? {
-        loadIcon(named: aboutIconFileName)
-            ?? loadIcon(named: defaultIconFileName)
-            ?? loadIcon(named: darkIconFileName)
-    }
-
-    private func loadIcon(named fileName: String) -> UIImage? {
-        guard let resourceURL = Bundle.main.resourceURL else {
-            return nil
-        }
-
-        let candidates = [
-            resourceURL.appendingPathComponent(fileName),
-            resourceURL.appendingPathComponent("icons").appendingPathComponent(fileName)
-        ]
-
-        for url in candidates {
-            if let image = UIImage(contentsOfFile: url.path) {
-                return image
-            }
-        }
-
-        return nil
+    private var aboutIconAssetName: String {
+        colorScheme == .dark ? "aboutAppIconDark" : "aboutAppIconDefault"
     }
 
     /// 应用信息区域：Icon、应用名、简介文案
     private var heroSection: some View {
         VStack(spacing: 18) {
             Group {
-                if let aboutIconImage {
-                    Image(uiImage: aboutIconImage)
-                        .resizable()
-                        .scaledToFit()
-                }
+                Image(aboutIconAssetName)
+                    .resizable()
+                    .scaledToFit()
             }
             .frame(width: appIconTileSize, height: appIconTileSize)
             .clipShape(
@@ -91,7 +61,7 @@ struct AboutView: View {
             // 贡献者信息
             Section {
                 HStack(spacing: 14) {
-                    Image(uiImage: loadIcon(named: "contributor1.jpg") ?? UIImage())
+                    Image("contributor1")
                         .resizable()
                         .scaledToFill()
                         .frame(width: 48, height: 48)
@@ -108,7 +78,7 @@ struct AboutView: View {
                 }
                 
                 HStack(spacing: 14) {
-                    Image(uiImage: loadIcon(named: "contributor2.jpg") ?? UIImage())
+                    Image("contributor2")
                         .resizable()
                         .scaledToFill()
                         .frame(width: 48, height: 48)

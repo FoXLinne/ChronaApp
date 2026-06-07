@@ -320,10 +320,10 @@ struct ActiveSessionView: View {
             Text(appModel.now.formatted(.dateTime.hour().minute()))
                 .font(.system(size: 11, weight: .regular, design: .rounded))
 
-            Text(String(localized: "common.separator"))
-                .font(.system(size: 11, weight: .thin))
-
             if batteryLevel >= 0 {
+                Text(String(localized: "common.separator"))
+                    .font(.system(size: 11, weight: .thin))
+
                 Image(systemName: batteryIcon(for: batteryLevel))
                     .font(.system(size: 9, weight: .light))
 
