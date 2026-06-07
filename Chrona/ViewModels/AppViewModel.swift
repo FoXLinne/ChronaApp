@@ -500,6 +500,8 @@ final class AppViewModel: ObservableObject {
     private func handleTimerTick() {
         guard activeSession != nil else { return }
 
+        let finishedSession = activeSession
+        let finishedTask = activeTask
         let result = SessionManager.handleTimerTick(
             activeSession: activeSession,
             now: now,
@@ -517,7 +519,7 @@ final class AppViewModel: ObservableObject {
         activeSession = result.newActiveSession
 
         if let stopResult = result.stopResult {
-            applyStopResult(stopResult)
+            applyStopResult(stopResult, after: finishedSession, activeTask: finishedTask)
         }
 
         if result.shouldEndRest {
@@ -534,6 +536,8 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        let finishedSession = activeSession
+        let finishedTask = activeTask
         let result = SessionManager.reconcile(
             activeSession: activeSession,
             now: now,
@@ -551,7 +555,7 @@ final class AppViewModel: ObservableObject {
         activeSession = result.newActiveSession
 
         if let stopResult = result.stopResult {
-            applyStopResult(stopResult)
+            applyStopResult(stopResult, after: finishedSession, activeTask: finishedTask)
         }
 
         if result.shouldEndRest {
@@ -562,7 +566,11 @@ final class AppViewModel: ObservableObject {
     }
 
     /// 将 StopResult 应用到当前状态（记录会话、置顶任务等）。
-    private func applyStopResult(_ result: SessionManager.StopResult) {
+    private func applyStopResult(
+        _ result: SessionManager.StopResult,
+        after finishedSession: ActiveSessionSnapshot?,
+        activeTask finishedTask: TaskItem?
+    ) {
         if let notice = result.notice {
             showNotice(notice)
         }
@@ -577,7 +585,8 @@ final class AppViewModel: ObservableObject {
         }
 
         if result.shouldBeginRest {
-            if let session = activeSession, let restDur = SessionManager.restDuration(after: session, activeTask: activeTask, restDurationMinutes: settings.restDurationMinutes) {
+            // 自然结束时 activeSession 已被清空，必须用刚结束的会话创建休息阶段。
+            if let session = finishedSession, let restDur = SessionManager.restDuration(after: session, activeTask: finishedTask, restDurationMinutes: settings.restDurationMinutes) {
                 activeSession = SessionManager.makeRestSnapshot(after: session, restDuration: restDur)
             } else {
                 activeSession = nil
