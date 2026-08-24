@@ -70,6 +70,7 @@ struct TaskListView: View {
                             } label: {
                                 Label(String(localized: "task.filter"), systemImage: "line.3.horizontal.decrease.circle")
                             }
+                            .menuActionDismissBehavior(.disabled)
                         } label: {
                             Image(systemName: "ellipsis")
                         }

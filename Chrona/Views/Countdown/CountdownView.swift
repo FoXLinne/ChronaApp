@@ -89,6 +89,7 @@ struct CountdownView: View {
                             } label: {
                                 Label(String(localized: "countdown.filter"), systemImage: "line.3.horizontal.decrease.circle")
                             }
+                            .menuActionDismissBehavior(.disabled)
                         } label: {
                             Image(systemName: "ellipsis")
                         }
