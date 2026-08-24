@@ -8,42 +8,33 @@ struct RootTabView: View {
     var body: some View {
         // 主标签视图，根据 appModel.selectedTab 的值选择当前显示的标签页
         TabView(selection: $appModel.selectedTab) {
-            // 任务列表页面 - 显示所有待办任务
-            TaskListView()
-                .tag(AppTab.tasks)  // 标签标识符
-                .tabItem {
-                    Label(String(localized: "tab.tasks"), systemImage: "checklist")  // 标签项显示文本和图标
-                }
-            
-            // 倒数日页面 - 显示各种倒数日信息
-            CountdownView()
-                .tag(AppTab.countdown)
-                .tabItem {
-                    Label(String(localized: "tab.countdown"), systemImage: "calendar")
-                }
-
-            // 专注页面 - 显示当前正在进行的专注会话
-            NavigationStack {
-                ActiveSessionView()
-            }
-            .tag(AppTab.active)
-            .tabItem {
-                Label(String(localized: "tab.active"), systemImage: "timer")
+            // 任务列表
+            Tab(String(localized: "tab.tasks"), systemImage: "checklist", value: AppTab.tasks) {
+                TaskListView()
             }
 
-            // 统计页面 - 显示用户的统计数据和图表
-            StatisticsView()
-                .tag(AppTab.statistics)
-                .tabItem {
-                    Label(String(localized: "tab.statistics"), systemImage: "chart.xyaxis.line")
-                }
+            // 倒数日
+            Tab(String(localized: "tab.countdown"), systemImage: "calendar.badge.clock", value: AppTab.countdown) {
+                CountdownView()
+            }
 
-            // 个人页面 - 用户个人设置和资料
-            ProfileView()
-                .tag(AppTab.profile)
-                .tabItem {
-                    Label(String(localized: "tab.profile"), systemImage: "person.crop.circle")
+            // 专注会话
+            Tab(String(localized: "tab.active"), systemImage: "timer", value: AppTab.active, role: .prominent) {
+                NavigationStack {
+                    ActiveSessionView()
                 }
+            }
+            .badge(activeTabBadge)
+
+            // 统计
+            Tab(String(localized: "tab.statistics"), systemImage: "chart.xyaxis.line", value: AppTab.statistics) {
+                StatisticsView()
+            }
+
+            // 个人
+            Tab(String(localized: "tab.profile"), systemImage: "person.crop.circle", value: AppTab.profile) {
+                ProfileView()
+            }
         }
         // 根据当前标签页和沉浸模式状态控制工具栏（标签栏）的可见性
         .toolbar(appModel.selectedTab == .active && appModel.isActiveImmersiveChromeHidden ? .hidden : .visible, for: .tabBar)
@@ -111,6 +102,10 @@ struct RootTabView: View {
 
     private var shouldShowReturnToActiveButton: Bool {
         appModel.activeSession != nil && appModel.selectedTab != .active
+    }
+
+    private var activeTabBadge: Text? {
+        appModel.activeSession == nil ? nil : Text("1")
     }
 
     private func returnButtonIcon(for session: ActiveSessionSnapshot) -> String {
