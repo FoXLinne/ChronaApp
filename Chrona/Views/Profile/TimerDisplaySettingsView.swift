@@ -50,6 +50,7 @@ struct TimerDisplaySettingsView: View {
                 }
             }
         }
+        .chronaSoftScrollEdgeEffect()
         .navigationTitle(String(localized: "settings.timerDisplay"))
         .navigationBarTitleDisplayMode(.inline)
     }

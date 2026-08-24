@@ -92,6 +92,7 @@ struct ProfileView: View {
                 }
             }
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+            .chronaSoftScrollEdgeEffect()
             .background {
                 if colorScheme == .light {
                     PageBackground(seed: "sunset")

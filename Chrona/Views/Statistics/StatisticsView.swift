@@ -63,6 +63,7 @@ struct StatisticsView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+            .chronaSoftScrollEdgeEffect()
             .background {
                 if colorScheme == .light {
                     PageBackground(seed: "ocean")
@@ -156,6 +157,7 @@ private extension StatisticsView {
                     Text(String(localized: "stats.customize.footer"))
                 }
             }
+            .chronaSoftScrollEdgeEffect()
             .navigationTitle(String(localized: "stats.customize.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

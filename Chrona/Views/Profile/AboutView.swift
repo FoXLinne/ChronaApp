@@ -159,6 +159,7 @@ struct AboutView: View {
             // ---------------------------------------------------------
         }
         .listStyle(.insetGrouped)
+        .chronaSoftScrollEdgeEffect()
         .navigationTitle(String(localized: "profile.about"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

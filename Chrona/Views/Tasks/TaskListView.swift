@@ -383,6 +383,7 @@ struct TaskCardDetailView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 28)
             }
+            .chronaSoftScrollEdgeEffect()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("")

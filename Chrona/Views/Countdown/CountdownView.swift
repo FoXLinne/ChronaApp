@@ -46,6 +46,7 @@ struct CountdownView: View {
                 }
             }
             .environment(\.editMode, $editMode)
+            .chronaSoftScrollEdgeEffect()
             .navigationTitle(String(localized: "tab.countdown"))
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
             .background {
@@ -350,6 +351,7 @@ private struct CountdownEditorView: View {
                 
                 Toggle(String(localized: "countdown.notification"), isOn: $notificationEnabled)
             }
+            .chronaSoftScrollEdgeEffect()
             .navigationTitle(event == nil ? String(localized: "countdown.add") : String(localized: "countdown.edit"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

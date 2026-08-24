@@ -106,6 +106,7 @@ struct DailyCheckInView: View {
         .navigationTitle(String(localized: "checkin.title"))
         .navigationBarTitleDisplayMode(.inline)
         .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
+        .chronaSoftScrollEdgeEffect()
         .background {
             if colorScheme == .light {
                 PageBackground(seed: "sunset")

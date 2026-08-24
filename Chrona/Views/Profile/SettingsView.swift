@@ -180,6 +180,7 @@ struct SettingsView: View {
             // ChronaDemoNotice()
             // ---------------------------------------------------------
         }
+        .chronaSoftScrollEdgeEffect()
         .navigationTitle(String(localized: "profile.settings"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -472,6 +473,7 @@ private struct StrictModeSettingsView: View {
                 )
             }
         }
+        .chronaSoftScrollEdgeEffect()
         .navigationTitle(String(localized: "settings.strictMode"))
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -107,6 +107,7 @@ struct TaskEditorView: View {
             .navigationTitle(task == nil ? String(localized: "task.add") : String(localized: "task.edit"))
             .navigationBarTitleDisplayMode(.inline)
             .scrollContentBackground(.hidden)
+            .chronaSoftScrollEdgeEffect()
             .background(PageBackground(seed: backgroundName))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
