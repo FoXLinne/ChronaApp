@@ -11,7 +11,7 @@ struct ActiveSessionView: View {
     @State private var disableClockAnimation = false
     @State private var showSettings = false
     @State private var timerDisplayDraft = AppSettings.default
-    @State private var batteryLevel: Float = -1
+    @State private var batteryLevel: Float?
     @State private var isLandscapeForOverlay = false
     @State private var burnInOffset = CGSize.zero
     @Environment(\.colorScheme) private var colorScheme
@@ -184,8 +184,8 @@ struct ActiveSessionView: View {
         .onAppear {
             appModel.setActiveImmersiveChromeHidden(isImmersive)
             disableClockAnimation = isImmersive
-            UIDevice.current.isBatteryMonitoringEnabled = true
-            batteryLevel = UIDevice.current.batteryLevel
+            BatteryStatusProvider.startMonitoring()
+            refreshBatteryLevel()
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -259,8 +259,11 @@ struct ActiveSessionView: View {
             }
         }
 
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
-            batteryLevel = UIDevice.current.batteryLevel
+        .onReceive(NotificationCenter.default.publisher(for: BatteryStatusProvider.levelDidChangeNotification)) { _ in
+            refreshBatteryLevel()
+        }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            refreshBatteryLevel()
         }
         .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
             let maxShift: CGFloat = 3
@@ -273,7 +276,7 @@ struct ActiveSessionView: View {
         .onDisappear {
             autoHideTask?.cancel()
             appModel.setActiveImmersiveChromeHidden(false)
-            UIDevice.current.isBatteryMonitoringEnabled = false
+            BatteryStatusProvider.stopMonitoring()
         }
         .toolbar(isImmersive ? .hidden : .visible, for: .tabBar)
         .statusBarHidden(appModel.shouldShowMinimalMode && !revealControls)
@@ -320,7 +323,7 @@ struct ActiveSessionView: View {
             Text(appModel.now.formatted(.dateTime.hour().minute()))
                 .font(.system(size: 11, weight: .regular, design: .rounded))
 
-            if batteryLevel >= 0 {
+            if let batteryLevel {
                 Text(String(localized: "common.separator"))
                     .font(.system(size: 11, weight: .thin))
 
@@ -342,6 +345,10 @@ struct ActiveSessionView: View {
         case ..<0.75: return "battery.75"
         default: return "battery.100"
         }
+    }
+
+    private func refreshBatteryLevel() {
+        batteryLevel = BatteryStatusProvider.currentLevel
     }
 
     @ViewBuilder
