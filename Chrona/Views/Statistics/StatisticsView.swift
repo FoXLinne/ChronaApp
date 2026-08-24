@@ -70,6 +70,7 @@ struct StatisticsView: View {
                 }
             }
             .navigationTitle(String(localized: "tab.statistics"))
+            .toolbarTitleDisplayMode(.inlineLarge)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

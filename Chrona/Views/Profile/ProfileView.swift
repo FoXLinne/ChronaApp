@@ -99,6 +99,7 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle(String(localized: "tab.profile"))
+            .toolbarTitleDisplayMode(.inlineLarge)
             .sheet(isPresented: $showAboutSheet) {
                 NavigationStack {
                     AboutView()

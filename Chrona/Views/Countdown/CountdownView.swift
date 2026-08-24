@@ -48,6 +48,7 @@ struct CountdownView: View {
             .environment(\.editMode, $editMode)
             .chronaSoftScrollEdgeEffect()
             .navigationTitle(String(localized: "tab.countdown"))
+            .toolbarTitleDisplayMode(.inlineLarge)
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
             .background {
                 if colorScheme == .light {
