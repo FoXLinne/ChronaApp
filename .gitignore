@@ -31,6 +31,7 @@ Pods/
 *.swp
 *.tmp
 *.log
+TODO_SwipeActionsContainer.md
 .github/
 AGENTS.md
 

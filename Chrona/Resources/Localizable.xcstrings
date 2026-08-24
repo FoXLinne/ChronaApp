@@ -40,6 +40,9 @@
     "00:00" : {
 
     },
+    "1" : {
+
+    },
     "about.contributor.role.1" : {
       "localizations" : {
         "en" : {
@@ -1051,26 +1054,6 @@
         }
       }
     },
-    "editor.discardChanges.action" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "放弃更改"
-          }
-        }
-      }
-    },
-    "editor.discardChanges.title" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "确定要放弃更改吗？"
-          }
-        }
-      }
-    },
     "common.done" : {
       "localizations" : {
         "en" : {
@@ -1881,6 +1864,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此版本的 Chrona 僅用於演示用途。"
+          }
+        }
+      }
+    },
+    "editor.discardChanges.action" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放弃更改"
+          }
+        }
+      }
+    },
+    "editor.discardChanges.title" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定要放弃更改吗？"
           }
         }
       }
@@ -4387,16 +4390,6 @@
         }
       }
     },
-    "settings.importData.version.unknown" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未知版本"
-          }
-        }
-      }
-    },
     "settings.importData.success" : {
       "localizations" : {
         "en" : {
@@ -4421,6 +4414,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "數據匯入成功"
+          }
+        }
+      }
+    },
+    "settings.importData.version.unknown" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知版本"
           }
         }
       }

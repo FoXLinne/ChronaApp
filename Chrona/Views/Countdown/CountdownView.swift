@@ -42,9 +42,12 @@ struct CountdownView: View {
                 if filteredTodayEvents.isEmpty && filteredFutureEvents.isEmpty && filteredPastEvents.isEmpty {
                     Section {
                         countdownEmptyRow
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
                 }
             }
+            .listStyle(.plain)
             .environment(\.editMode, $editMode)
             .chronaSoftScrollEdgeEffect()
             .navigationTitle(String(localized: "tab.countdown"))
@@ -70,7 +73,7 @@ struct CountdownView: View {
                         }
                     }
                 } else {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button {
                                 withAnimation {
@@ -93,12 +96,19 @@ struct CountdownView: View {
                         } label: {
                             Image(systemName: "ellipsis")
                         }
+                    }
 
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             editorRoute = .add()
                         } label: {
                             Image(systemName: "plus")
+                                .foregroundStyle(.white)
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentColor)
                         .accessibilityLabel(String(localized: "countdown.add"))
                     }
                 }
@@ -143,45 +153,37 @@ struct CountdownView: View {
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
                     pendingDeletion = event
-                } label: {
-                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
+                .labelStyle(.iconOnly)
 
-                Button {
+                Button(String(localized: "common.edit"), systemImage: "square.and.pencil") {
                     editorRoute = .edit(event)
-                } label: {
-                    Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
                 }
+                .labelStyle(.iconOnly)
                 .tint(.accentColor)
             }
     }
 
+    @ViewBuilder
     private var countdownEmptyRow: some View {
-        VStack(alignment: .center, spacing: 12) {
-            Spacer()
-            
-            Text(emptyTitle)
-                .font(.title3.bold())
-            
-            Text(emptyMessage)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            if appModel.countdownEvents.isEmpty {
-                Button {
+        if appModel.countdownEvents.isEmpty {
+            ListEmptyStateView(
+                searchText: searchKeyword,
+                title: emptyTitle,
+                message: emptyMessage,
+                action: {
                     editorRoute = .add()
-                } label: {
-                    Label(String(localized: "countdown.add"), systemImage: "plus")
                 }
-                .buttonStyle(.glass(.regular.tint(.accentColor)))
-                .padding(.top, 4)
+            ) {
+                Label(String(localized: "countdown.add"), systemImage: "plus")
             }
-            
-            Spacer()
+        } else {
+            ListEmptyStateView(
+                searchText: searchKeyword,
+                title: emptyTitle,
+                message: emptyMessage
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.horizontal)
     }
 
     private var emptyTitle: String {
@@ -194,6 +196,10 @@ struct CountdownView: View {
         appModel.countdownEvents.isEmpty
             ? String(localized: "countdown.empty.message")
             : String(localized: "countdown.noMatches.message")
+    }
+
+    private var searchKeyword: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var filteredTodayEvents: [CountdownEvent] {
@@ -346,7 +352,7 @@ private struct CountdownEditorView: View {
                 )
 
                 Toggle(String(localized: "countdown.showTime"), isOn: $includesTime)
-                
+
                 Toggle(String(localized: "countdown.notification"), isOn: $notificationEnabled)
             }
             .chronaSoftScrollEdgeEffect()

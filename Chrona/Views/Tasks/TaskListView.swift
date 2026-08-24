@@ -10,11 +10,12 @@ private struct TaskEditorRoute: Identifiable {
 }
 
 struct TaskListView: View {
+    private let newTaskTransitionID = "task-list-new-task"
+
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
     @Namespace private var cardNamespace
 
-    @State private var editMode: EditMode = .inactive
     @State private var detailTask: TaskItem?
     @State private var editorRoute: TaskEditorRoute?
     @State private var pendingDeletion: TaskItem?
@@ -38,67 +39,30 @@ struct TaskListView: View {
                 prompt: String(localized: "task.search")
             )
             .toolbar {
-                if editMode == .active {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation {
-                                editMode = .inactive
-                            }
-                        } label: {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.white)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                } else {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
                         Menu {
-                            Button {
-                                guardTaskMutation {
-                                    withAnimation {
-                                        editMode = .active
-                                    }
-                                }
-                            } label: {
-                                Label(String(localized: "common.edit"), systemImage: "pencil")
-                            }
-
-                            Menu {
-                                ForEach(FocusMode.allCases) { mode in
-                                    Toggle(isOn: binding(for: mode)) { Text(mode.label) }
-                                }
-                            } label: {
-                                Label(String(localized: "task.filter"), systemImage: "line.3.horizontal.decrease.circle")
-                            }
-                            .menuActionDismissBehavior(.disabled)
-                        } label: {
-                            Image(systemName: "ellipsis")
-                        }
-
-                        Button {
-                            guardTaskMutation {
-                                editorRoute = .add()
+                            ForEach(FocusMode.allCases) { mode in
+                                Toggle(isOn: binding(for: mode)) { Text(mode.label) }
                             }
                         } label: {
-                            Image(systemName: "plus")
+                            Label(String(localized: "task.filter"), systemImage: "line.3.horizontal.decrease.circle")
                         }
-                        .accessibilityLabel(String(localized: "task.new"))
+                        .menuActionDismissBehavior(.disabled)
+                    } label: {
+                        Image(systemName: "ellipsis")
                     }
                 }
+
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    newTaskButton
+                }
+                .matchedTransitionSource(id: newTaskTransitionID, in: cardNamespace)
             }
             .sheet(item: $editorRoute) { route in
-                TaskEditorView(task: route.task) { updatedTask in
-                    guardTaskMutation {
-                        if let originalTask = route.task {
-                            var copy = updatedTask; copy.id = originalTask.id; copy.order = originalTask.order
-                            appModel.updateTask(copy)
-                        } else {
-                            appModel.createTask(title: updatedTask.title, mode: updatedTask.mode,
-                                presetID: updatedTask.pomodoroPresetID, countdownDuration: updatedTask.countdownDuration,
-                                backgroundName: updatedTask.backgroundName)
-                        }
-                    }
-                }
+                taskEditorSheet(for: route)
             }
             .alert(item: $pendingDeletion) { task in
                 Alert(
@@ -120,37 +84,62 @@ struct TaskListView: View {
     }
 
     private var taskList: some View {
-        List {
-            if listTasks.isEmpty {
-                Section {
-                    emptyView
-                        .listRowInsets(EdgeInsets(top: 80, leading: 16, bottom: 80, trailing: 16))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-            } else if editMode == .active {
-                Section {
-                    ForEach(appModel.sortedTasks) { task in
-                        taskRow(task, isEditing: true)
-                    }
-                    .onDelete(perform: handleDelete)
-                    .onMove(perform: handleMove)
-                }
+        ScrollView {
+            if displayTasks.isEmpty {
+                emptyView
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 24)
             } else {
-                Section {
+                LazyVStack(spacing: 0) {
                     ForEach(displayTasks) { task in
                         taskRow(task)
                     }
+                    .reorderable()
+                }
+                .swipeActionsContainer()
+                .padding(.vertical, 6)
+            }
+        }
+        .reorderContainer(for: TaskItem.self, isEnabled: canReorderTasks, move: handleReorder)
+        .chronaSoftScrollEdgeEffect()
+    }
+
+    private var newTaskButton: some View {
+        Button {
+            guardTaskMutation {
+                editorRoute = .add()
+            }
+        } label: {
+            Image(systemName: "plus")
+                .foregroundStyle(.white)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.accentColor)
+        .accessibilityLabel(String(localized: "task.new"))
+    }
+
+    @ViewBuilder
+    private func taskEditorSheet(for route: TaskEditorRoute) -> some View {
+        let editor = TaskEditorView(task: route.task) { updatedTask in
+            guardTaskMutation {
+                if let originalTask = route.task {
+                    var copy = updatedTask; copy.id = originalTask.id; copy.order = originalTask.order
+                    appModel.updateTask(copy)
+                } else {
+                    appModel.createTask(title: updatedTask.title, mode: updatedTask.mode,
+                        presetID: updatedTask.pomodoroPresetID, countdownDuration: updatedTask.countdownDuration,
+                        backgroundName: updatedTask.backgroundName)
                 }
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .environment(\.editMode, $editMode)
-    }
 
-    private var listTasks: [TaskItem] {
-        editMode == .active ? appModel.sortedTasks : displayTasks
+        if route.task == nil {
+            editor
+                .navigationTransition(.zoom(sourceID: newTaskTransitionID, in: cardNamespace))
+        } else {
+            editor
+        }
     }
 
     private var displayTasks: [TaskItem] {
@@ -162,27 +151,34 @@ struct TaskListView: View {
         }
     }
 
+    @ViewBuilder
     private var emptyView: some View {
-        VStack(spacing: 12) {
-            Text(emptyTitle).font(.title3.bold())
-            Text(emptyMessage).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            if appModel.sortedTasks.isEmpty {
-                Button {
+        if appModel.sortedTasks.isEmpty {
+            ListEmptyStateView(
+                searchText: searchKeyword,
+                title: emptyTitle,
+                message: emptyMessage,
+                action: {
                     guardTaskMutation {
                         editorRoute = .add()
                     }
-                } label: {
-                    Label(String(localized: "task.new"), systemImage: "plus")
-                }.buttonStyle(.glass(.regular.tint(.accentColor))).padding(.top, 4)
+                }
+            ) {
+                Label(String(localized: "task.new"), systemImage: "plus")
             }
-        }.frame(maxWidth: .infinity).padding(.horizontal)
+        } else {
+            ListEmptyStateView(
+                searchText: searchKeyword,
+                title: emptyTitle,
+                message: emptyMessage
+            )
+        }
     }
 
-    private func taskRow(_ task: TaskItem, isEditing: Bool = false) -> some View {
+    private func taskRow(_ task: TaskItem) -> some View {
         TaskGlassCard(
             task: task,
             namespace: cardNamespace,
-            isEditing: isEditing,
             onOpen: {
                 detailTask = task
             },
@@ -197,22 +193,19 @@ struct TaskListView: View {
                 }
             }
         )
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isTaskMutationLocked {
                 Button(role: .destructive) {
                     pendingDeletion = task
-                } label: {
-                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
+                .labelStyle(.iconOnly)
 
-                Button {
+                Button(String(localized: "common.edit"), systemImage: "square.and.pencil") {
                     editorRoute = .edit(task)
-                } label: {
-                    Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
                 }
+                .labelStyle(.iconOnly)
                 .tint(.accentColor)
             }
         }
@@ -220,6 +213,9 @@ struct TaskListView: View {
 
     private var emptyTitle: String { appModel.sortedTasks.isEmpty ? String(localized: "task.empty.title") : String(localized: "task.noMatches.title") }
     private var emptyMessage: String { appModel.sortedTasks.isEmpty ? String(localized: "task.empty.message") : String(localized: "task.noMatches.message") }
+    private var searchKeyword: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isShowingFullTaskOrder: Bool { searchKeyword.isEmpty && selectedModes.count == FocusMode.allCases.count }
+    private var canReorderTasks: Bool { !isTaskMutationLocked && isShowingFullTaskOrder && !displayTasks.isEmpty }
 
     private func binding(for mode: FocusMode) -> Binding<Bool> {
         Binding { selectedModes.contains(mode) } set: { v in
@@ -227,15 +223,30 @@ struct TaskListView: View {
         }
     }
 
-    private func handleMove(from source: IndexSet, to destination: Int) {
+    private func handleReorder(_ difference: ReorderDifference<UUID, ReorderableSingleCollectionIdentifier>) {
+        guard canReorderTasks else { return }
+
+        let sortedTasks = appModel.sortedTasks
+        let sourceIndexes = difference.sources.compactMap { sourceID in
+            sortedTasks.firstIndex(where: { $0.id == sourceID })
+        }
+
+        guard sourceIndexes.count == difference.sources.count else { return }
+
+        let source = IndexSet(sourceIndexes)
+        let destination: Int
+
+        switch difference.destination.position {
+        case .before(let targetID):
+            guard let targetIndex = sortedTasks.firstIndex(where: { $0.id == targetID }) else { return }
+            let movedBeforeTarget = sourceIndexes.filter { $0 < targetIndex }.count
+            destination = targetIndex - movedBeforeTarget
+        case .end:
+            destination = sortedTasks.count
+        }
+
         guardTaskMutation {
             appModel.moveTasks(from: source, to: destination)
-        }
-    }
-
-    private func handleDelete(_ offsets: IndexSet) {
-        guardTaskMutation {
-            appModel.deleteTasks(at: offsets)
         }
     }
 
@@ -258,54 +269,43 @@ private struct TaskGlassCard: View {
     @EnvironmentObject private var appModel: AppViewModel
     let task: TaskItem
     let namespace: Namespace.ID
-    let isEditing: Bool
     let onOpen: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        Group {
-            if isEditing {
-                cardBody
-            } else {
-                cardBody
-                    .matchedTransitionSource(id: task.id, in: namespace)
-            }
-        }
-        .contextMenu {
-            if !isEditing {
+        cardBody
+            .matchedTransitionSource(id: task.id, in: namespace)
+            .contextMenu {
                 Button(String(localized: "task.start")) {
                     withAnimation(.smooth) {
                         _ = appModel.startTask(task)
                     }
                 }
+                Button(String(localized: "common.edit")) { onEdit() }
+                Divider()
+                Button(String(localized: "common.delete"), role: .destructive) { onDelete() }
             }
-            Button(String(localized: "common.edit")) { onEdit() }
-            Divider()
-            Button(String(localized: "common.delete"), role: .destructive) { onDelete() }
-        }
     }
 
     private var cardBody: some View {
         HStack(spacing: 14) {
             leadingContent
 
-            if !isEditing {
-                ZStack(alignment: .bottomTrailing) {
-                    Button {
-                        withAnimation(.smooth) {
-                            _ = appModel.startTask(task)
-                        }
-                    } label: {
-                        Text(controlLabel).font(.headline.weight(.semibold))
+            ZStack(alignment: .bottomTrailing) {
+                Button {
+                    withAnimation(.smooth) {
+                        _ = appModel.startTask(task)
                     }
-                    .foregroundStyle(controlTint)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
+                } label: {
+                    Text(controlLabel).font(.headline.weight(.semibold))
+                }
+                .foregroundStyle(controlTint)
+                .padding(.horizontal, 12).padding(.vertical, 6)
 
-                    if completedCount > 0 {
-                        Text(verbatim: "\(completedCount)").font(.caption2.bold())
-                            .padding(6).background(.thinMaterial, in: Circle()).offset(x: 10, y: 10)
-                    }
+                if completedCount > 0 {
+                    Text(verbatim: "\(completedCount)").font(.caption2.bold())
+                        .padding(6).background(.thinMaterial, in: Circle()).offset(x: 10, y: 10)
                 }
             }
         }
@@ -343,11 +343,7 @@ private struct TaskGlassCard: View {
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            if !isEditing {
-                onOpen()
-            }
-        }
+        .onTapGesture { onOpen() }
     }
 
 

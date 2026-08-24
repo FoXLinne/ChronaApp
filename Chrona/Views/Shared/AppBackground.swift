@@ -19,7 +19,9 @@ struct AppBackground: View {
                 )
             )
             .overlay(
-                Color.black.opacity(colorScheme == .dark ? 0.14 : 0.03)
+                Rectangle()
+                    .fill(Color.black)
+                    .opacity(colorScheme == .dark ? 0.14 : 0.03)
                     .blendMode(.multiply)
             )
             .overlay(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.08 : 0.15))
