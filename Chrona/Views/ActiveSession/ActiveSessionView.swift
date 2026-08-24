@@ -202,16 +202,14 @@ struct ActiveSessionView: View {
         }.toolbar(isImmersive ? .hidden : .visible, for: .navigationBar)
         .sheet(isPresented: $showSettings) {
             NavigationStack {
-                TimerDisplaySettingsView(draft: $timerDisplayDraft)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button {
-                                showSettings = false
-                            } label: {
-                                Image(systemName: "xmark")
+                        TimerDisplaySettingsView(draft: $timerDisplayDraft)
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button(role: .close) {
+                                        showSettings = false
+                                    }
+                                }
                             }
-                        }
-                    }
             }
         }
         .onChange(of: appModel.selectedTab) { _, newTab in

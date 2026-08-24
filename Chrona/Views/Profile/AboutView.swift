@@ -164,10 +164,8 @@ struct AboutView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button {
+                Button(role: .close) {
                     dismiss()
-                } label: {
-                    Image(systemName: "xmark")
                 }
             }
         }

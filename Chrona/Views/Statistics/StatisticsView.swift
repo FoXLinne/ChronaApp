@@ -162,15 +162,9 @@ private extension StatisticsView {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    Button(role: .confirm) {
                         showCustomizeSheet = false
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.white)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .tint(.accentColor)
                 }
             }
             .environment(\.editMode, .constant(.active))
@@ -719,15 +713,9 @@ private struct DateFilterPickerSheet: View {
             .padding(.bottom, 12)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                    Button(role: .confirm) {
                         dismiss()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.white)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .tint(.accentColor)
                 }
             }
         }

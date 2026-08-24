@@ -479,15 +479,13 @@ private struct AvatarCropperView: View {
             .toolbarBackground(Color.black.opacity(0.92), for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
+                    Button(role: .close) {
                         onCancel()
-                    } label: {
-                        Image(systemName: "xmark")
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    Button(role: .confirm) {
                         let normalized = normalizedImage(image)
                         guard
                             let cropped = croppedImage(
@@ -502,13 +500,7 @@ private struct AvatarCropperView: View {
                             return
                         }
                         onConfirm(cropped)
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.white)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .tint(.accentColor)
                 }
             }
         }

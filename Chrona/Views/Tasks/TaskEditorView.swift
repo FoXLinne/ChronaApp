@@ -111,10 +111,8 @@ struct TaskEditorView: View {
             .background(PageBackground(seed: backgroundName))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
+                    Button(role: .close) {
                         requestDismiss()
-                    } label: {
-                        Image(systemName: "xmark")
                     }
                     .confirmationDialog(
                         String(localized: "editor.discardChanges.title"),
@@ -128,15 +126,9 @@ struct TaskEditorView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    Button(role: .confirm) {
                         save()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.white)
                     }
-                    .buttonStyle(.borderedProminent)
-                    // .buttonBorderShape(.circle)
-                    // .tint(.accentColor)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isDuplicateName)
                 }
             }

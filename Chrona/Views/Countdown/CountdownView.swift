@@ -62,15 +62,11 @@ struct CountdownView: View {
             .toolbar {
                 if editMode == .active {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
+                        Button(role: .confirm) {
                             withAnimation {
                                 editMode = .inactive
                             }
-                        } label: {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.white)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 } else {
                     ToolbarItemGroup(placement: .topBarTrailing) {
@@ -356,10 +352,8 @@ private struct CountdownEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
+                    Button(role: .close) {
                         requestDismiss()
-                    } label: {
-                        Image(systemName: "xmark")
                     }
                     .confirmationDialog(
                         String(localized: "editor.discardChanges.title"),
@@ -373,15 +367,9 @@ private struct CountdownEditorView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    Button(role: .confirm) {
                         save()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.white)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .tint(.accentColor)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
