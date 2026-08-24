@@ -32,7 +32,6 @@ struct TaskListView: View {
             }
             .navigationTitle(String(localized: "tab.tasks"))
             .searchable(text: $searchText, placement: .toolbar, prompt: String(localized: "task.search"))
-            .searchToolbarBehavior(.minimize)
             .toolbar {
                 if editMode == .active {
                     ToolbarItem(placement: .topBarTrailing) {

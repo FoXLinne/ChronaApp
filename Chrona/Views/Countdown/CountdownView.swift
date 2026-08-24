@@ -55,10 +55,9 @@ struct CountdownView: View {
             }
             .searchable(
                 text: $searchText,
-                placement: .toolbar,
+                placement: .navigationBarDrawer(displayMode: .automatic),
                 prompt: String(localized: "countdown.search")
             )
-            .searchToolbarBehavior(.minimize)
             .toolbar {
                 if editMode == .active {
                     ToolbarItem(placement: .topBarTrailing) {
