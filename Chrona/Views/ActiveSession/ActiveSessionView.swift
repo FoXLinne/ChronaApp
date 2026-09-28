@@ -7,6 +7,7 @@ struct ActiveSessionView: View {
     @State private var showDiscardConfirm = false
     @State private var autoHideTask: Task<Void, Never>?
     @State private var hasPlayedInitialImmersiveTransition = false
+    @State private var disableClockAnimation = false
 
     private var isImmersive: Bool {
         appModel.shouldShowMinimalMode && !revealControls
@@ -18,13 +19,14 @@ struct ActiveSessionView: View {
             Color.black
                 .ignoresSafeArea()
                 .opacity(isImmersive ? 1 : 0)
-                .animation(.smooth, value: isImmersive)
+                .animation(.easeInOut(duration: 0.3), value: isImmersive)
 
             if let session = appModel.activeSession, let status = appModel.timerStatus {
                 Color.black
                     .ignoresSafeArea()
                     .opacity(session.phase == .focus && session.isPaused ? (isImmersive ? 0.22 : 0.3) : 0)
                     .animation(.smooth, value: session.isPaused)
+                    .animation(.easeInOut(duration: 0.3), value: isImmersive)
 
                 let timerText = appModel.formattedDuration(status.remaining ?? status.elapsed)
 
@@ -35,21 +37,21 @@ struct ActiveSessionView: View {
                         Text(session.mode == .pomodoro ? String(localized: "mode.pomodoro") : session.mode == .stopwatch ? String(localized: "mode.stopwatch") : String(localized: "mode.countdown"))
                             .foregroundStyle(.secondary)
                     }
-                    .opacity(isImmersive ? 0 : 1)
-                    .frame(height: isImmersive ? 0 : nil)
+                    .opacity(1) // Always show task name and type, even in immersive mode
 
                     Text(timerText)
                         .font(.system(size: timerFontSize(for: timerText), weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
-                        .contentTransition(isImmersive ? .identity : .numericText())
+                        .contentTransition(disableClockAnimation ? .identity : .numericText())
                         .monospacedDigit()
-                        .animation(isImmersive ? nil : .smooth, value: status.remaining ?? status.elapsed)
+                        .animation(disableClockAnimation ? nil : .smooth, value: status.remaining ?? status.elapsed)
 
                     if session.phase == .focus {
                         progressView(status: status, session: session)
                             .opacity(isImmersive ? 0 : 1)
                             .frame(height: isImmersive ? 0 : nil)
+                            .animation(.smooth, value: isImmersive)
                     }
 
                     if revealControls || !appModel.shouldShowMinimalMode {
@@ -61,6 +63,7 @@ struct ActiveSessionView: View {
                         pauseStatusView(for: session)
                             .opacity(isImmersive ? 0 : 1)
                             .frame(height: isImmersive ? 0 : nil)
+                            .animation(.smooth, value: isImmersive)
                     }
 
                     if isImmersive {
@@ -72,10 +75,14 @@ struct ActiveSessionView: View {
                 .padding(24)
                 .foregroundStyle(.white)
                 .animation(.smooth, value: revealControls)
+                .animation(.smooth, value: isImmersive)
+                .transition(.opacity.combined(with: .scale(scale: 1.05)))
             } else {
                 emptyState
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .transition(.opacity)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isImmersive else { return }
@@ -87,6 +94,7 @@ struct ActiveSessionView: View {
         .onAppear {
             ScreenAwakeController.updateRefreshRate(isImmersive: isImmersive)
             appModel.setActiveImmersiveChromeHidden(isImmersive)
+            disableClockAnimation = isImmersive
         }
         .onChange(of: appModel.shouldShowMinimalMode) { _, enabled in
             if enabled {
@@ -103,6 +111,7 @@ struct ActiveSessionView: View {
                 revealControls = true
                 autoHideTask?.cancel()
             }
+            
             ScreenAwakeController.updateRefreshRate(isImmersive: appModel.shouldShowMinimalMode && !revealControls)
             appModel.setActiveImmersiveChromeHidden(appModel.shouldShowMinimalMode && !revealControls)
         }
@@ -113,6 +122,21 @@ struct ActiveSessionView: View {
                 scheduleAutoImmersion()
             }
         }
+        .onChange(of: isImmersive) { _, newValue in
+            if newValue {
+                // When entering immersive mode, wait 1s before disabling animation for a smooth transition
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1))
+                    if isImmersive {
+                        disableClockAnimation = true
+                    }
+                }
+            } else {
+                // When exiting immersive mode, immediately re-enable animation
+                disableClockAnimation = false
+            }
+        }
+
         .onDisappear {
             autoHideTask?.cancel()
             ScreenAwakeController.updateRefreshRate(isImmersive: false)
@@ -126,7 +150,9 @@ struct ActiveSessionView: View {
                 if appModel.stopConsequence() == .discardAdvancedRule {
                     showDiscardConfirm = true
                 } else {
-                    appModel.stopActiveSession()
+                    withAnimation(.smooth) {
+                        appModel.stopActiveSession()
+                    }
                 }
             }
         } message: {
@@ -135,7 +161,9 @@ struct ActiveSessionView: View {
         .alert(String(localized: "session.discard.confirm.title"), isPresented: $showDiscardConfirm) {
             Button(String(localized: "common.cancel"), role: .cancel) {}
             Button(String(localized: "session.discard.confirm.action"), role: .destructive) {
-                appModel.stopActiveSession()
+                withAnimation(.smooth) {
+                    appModel.stopActiveSession()
+                }
             }
         } message: {
             Text(String(localized: "session.discard.confirm.message"))
@@ -217,7 +245,9 @@ struct ActiveSessionView: View {
                 HStack(spacing: 12) {
                     if session.mode != .pomodoro && !appModel.settings.advancedDisallowPause {
                         Button(session.isPaused ? String(localized: "common.resume") : String(localized: "common.pause")) {
-                            appModel.pauseOrResumeActiveSession()
+                            withAnimation(.smooth) {
+                                appModel.pauseOrResumeActiveSession()
+                            }
                         }
                         .buttonStyle(.glass(.regular.tint(.blue)))
                         .foregroundStyle(.white)
@@ -237,7 +267,9 @@ struct ActiveSessionView: View {
                 }
             } else {
                 Button(String(localized: "session.endRest")) {
-                    appModel.endRest()
+                    withAnimation(.smooth) {
+                        appModel.endRest()
+                    }
                 }
                 .buttonStyle(.glass(.regular.tint(.red)))
                 .foregroundStyle(.white)
