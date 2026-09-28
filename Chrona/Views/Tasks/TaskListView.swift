@@ -84,7 +84,8 @@ struct TaskListView: View {
     }
 
     private var taskList: some View {
-        ScrollView {
+        let completedCounts = completedCountsToday
+        return ScrollView {
             if displayTasks.isEmpty {
                 emptyView
                     .frame(maxWidth: .infinity)
@@ -93,7 +94,7 @@ struct TaskListView: View {
             } else {
                 LazyVStack(spacing: 0) {
                     ForEach(displayTasks) { task in
-                        taskRow(task)
+                        taskRow(task, completedCount: completedCounts[task.id] ?? 0)
                     }
                     .reorderable()
                 }
@@ -151,6 +152,18 @@ struct TaskListView: View {
         }
     }
 
+    /// 一次遍历得到全部任务的今日完成次数，供列表卡片复用。
+    private var completedCountsToday: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        let calendar = Calendar.current
+        for session in appModel.sessions where session.wasCompleted && calendar.isDateInToday(session.endedAt) {
+            if let taskID = session.taskID {
+                counts[taskID, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
     @ViewBuilder
     private var emptyView: some View {
         if appModel.sortedTasks.isEmpty {
@@ -175,9 +188,10 @@ struct TaskListView: View {
         }
     }
 
-    private func taskRow(_ task: TaskItem) -> some View {
+    private func taskRow(_ task: TaskItem, completedCount: Int) -> some View {
         TaskGlassCard(
             task: task,
+            completedCount: completedCount,
             namespace: cardNamespace,
             onOpen: {
                 detailTask = task
@@ -268,6 +282,7 @@ struct TaskListView: View {
 private struct TaskGlassCard: View {
     @EnvironmentObject private var appModel: AppViewModel
     let task: TaskItem
+    let completedCount: Int
     let namespace: Namespace.ID
     let onOpen: () -> Void
     let onEdit: () -> Void
@@ -347,7 +362,6 @@ private struct TaskGlassCard: View {
     }
 
 
-    private var completedCount: Int { appModel.completedCountToday(for: task) }
     private var isCompleted: Bool { completedCount > 0 }
     private var subtitleDetail: String? {
         switch task.mode {
@@ -410,7 +424,8 @@ struct TaskCardDetailView: View {
     }
 
     private var expandedCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        let summary = activitySummary
+        return VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .center, spacing: 16) {
                 Circle()
                     .fill(LinearGradient(colors: ThemePalette.previewColors(for: task.backgroundName), startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -443,8 +458,8 @@ struct TaskCardDetailView: View {
             Divider()
                 .opacity(0.45)
 
-            statsBlock
-            heatmapBlock
+            statsBlock(summary: summary)
+            heatmapBlock(summary: summary)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -452,14 +467,14 @@ struct TaskCardDetailView: View {
         .shadow(color: .black.opacity(0.08), radius: 16, y: 8)
     }
 
-    private var statsBlock: some View {
+    private func statsBlock(summary: TaskActivitySummary) -> some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "task.detail.sessionCount"))
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Text("\(totalCount)")
+                Text("\(summary.totalCount)")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .monospacedDigit()
             }
@@ -474,13 +489,13 @@ struct TaskCardDetailView: View {
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                durationText(totalDuration, numberSize: 30, unitSize: 13)
+                durationText(summary.totalDuration, numberSize: 30, unitSize: 13)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private var heatmapBlock: some View {
+    private func heatmapBlock(summary: TaskActivitySummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "task.detail.heatmapSection"))
                 .font(.system(.headline, design: .rounded).weight(.bold))
@@ -488,7 +503,7 @@ struct TaskCardDetailView: View {
 
             HStack(spacing: 6) {
                 ForEach(weekDays, id: \.self) { day in
-                    let duration = dailyDurations[day] ?? 0
+                    let duration = summary.dailyDurations[day] ?? 0
                     let today = Calendar.current.isDateInToday(day)
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(heatmapColor(for: duration))
@@ -578,14 +593,22 @@ struct TaskCardDetailView: View {
         let mon = cal.date(from: c) ?? today
         return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: mon) }
     }
-    private var dailyDurations: [Date: TimeInterval] {
-        let sessions = appModel.sessions.filter { $0.taskID == task.id }
-        var result: [Date: TimeInterval] = [:]; let cal = Calendar.current
-        for s in sessions { let d = cal.startOfDay(for: s.endedAt); result[d, default: 0] += s.focusedDuration }
-        return result
+    private struct TaskActivitySummary {
+        var totalCount = 0
+        var totalDuration: TimeInterval = 0
+        var dailyDurations: [Date: TimeInterval] = [:]
     }
-    private var totalCount: Int { appModel.sessions.filter { $0.taskID == task.id }.count }
-    private var totalDuration: TimeInterval { appModel.sessions.filter { $0.taskID == task.id }.reduce(0) { $0 + $1.focusedDuration } }
+
+    private var activitySummary: TaskActivitySummary {
+        var summary = TaskActivitySummary()
+        let calendar = Calendar.current
+        for session in appModel.sessions where session.taskID == task.id {
+            summary.totalCount += 1
+            summary.totalDuration += session.focusedDuration
+            summary.dailyDurations[calendar.startOfDay(for: session.endedAt), default: 0] += session.focusedDuration
+        }
+        return summary
+    }
     private var isTaskMutationLocked: Bool { appModel.activeSession != nil }
     private func guardTaskMutation(_ action: () -> Void) {
         guard !isTaskMutationLocked else {

@@ -110,8 +110,7 @@ enum SessionManager {
     static func stopActiveSession(
         activeSession: ActiveSessionSnapshot?,
         now: Date,
-        settings: AppSettings,
-        autoMoveCompletedTaskToTop: Bool
+        settings: AppSettings
     ) -> StopResult {
         guard let session = activeSession else {
             return StopResult(recordedSession: nil, shouldBeginRest: false, notice: nil)
@@ -247,7 +246,7 @@ enum SessionManager {
         }
 
         if session.phase == .focus {
-            let stopResult = stopActiveSession(activeSession: session, now: now, settings: settings, autoMoveCompletedTaskToTop: false)
+            let stopResult = stopActiveSession(activeSession: session, now: now, settings: settings)
             return TickResult(newActiveSession: nil, stopResult: stopResult, shouldEndRest: false, autoResumeNotice: resumeResult.notice)
         } else {
             return TickResult(newActiveSession: nil, stopResult: nil, shouldEndRest: true, autoResumeNotice: resumeResult.notice)
@@ -283,7 +282,7 @@ enum SessionManager {
         }
 
         if session.phase == .focus {
-            let stopResult = stopActiveSession(activeSession: session, now: now, settings: settings, autoMoveCompletedTaskToTop: false)
+            let stopResult = stopActiveSession(activeSession: session, now: now, settings: settings)
             return TickResult(newActiveSession: nil, stopResult: stopResult, shouldEndRest: false, autoResumeNotice: resumeResult.notice)
         } else {
             return TickResult(newActiveSession: nil, stopResult: nil, shouldEndRest: true, autoResumeNotice: resumeResult.notice)

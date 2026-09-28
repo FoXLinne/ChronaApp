@@ -177,7 +177,9 @@ private extension FocusHeatmapView {
 // MARK: - Calendar Grid
 private extension FocusHeatmapView {
     var calendarGrid: some View {
-        LazyVGrid(
+        let calendar = Calendar.current
+        let checkInDays = showCheckInMarks ? Set(checkInDates.map(calendar.startOfDay(for:))) : []
+        return LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7),
             spacing: 2
         ) {
@@ -186,7 +188,7 @@ private extension FocusHeatmapView {
                     let duration = durations[date] ?? 0
                     let isToday = Calendar.current.isDateInToday(date)
 
-                    dayCell(date: date, duration: duration, isToday: isToday)
+                    dayCell(date: date, duration: duration, isToday: isToday, hasCheckIn: checkInDays.contains(date))
                 } else {
                     Color.clear
                         .aspectRatio(1, contentMode: .fill)
@@ -217,12 +219,8 @@ private extension FocusHeatmapView {
         return days
     }
 
-    func dayCell(date: Date, duration: TimeInterval, isToday: Bool) -> some View {
-        let hasCheckIn = showCheckInMarks && checkInDates.contains {
-            Calendar.current.isDate($0, inSameDayAs: date)
-        }
-
-        return ZStack(alignment: .bottomTrailing) {
+    func dayCell(date: Date, duration: TimeInterval, isToday: Bool, hasCheckIn: Bool) -> some View {
+        ZStack(alignment: .bottomTrailing) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(heatmapColor(for: duration))
                 .aspectRatio(1, contentMode: .fill)

@@ -190,17 +190,18 @@ private extension StatisticsView {
         Section {
             Group {
                 if isCardExpanded("overview") {
+                    let summary = appModel.focusOverview()
                     statsValueRow(
                         title: String(localized: "stats.totalCount"),
-                        count: appModel.sessions.count
+                        count: summary.count
                     )
                     statsDurationRow(
                         title: String(localized: "stats.totalDuration"),
-                        duration: appModel.totalFocusedDurationAllTime
+                        duration: summary.duration
                     )
                     statsDurationRow(
                         title: String(localized: "stats.dailyAverage"),
-                        duration: appModel.averageDailyDuration()
+                        duration: summary.dailyAverage
                     )
                 }
             }
@@ -219,13 +220,14 @@ private extension StatisticsView {
         Section {
             Group {
                 if isCardExpanded("todayFocus") {
+                    let summary = appModel.todayFocusSummary()
                     statsValueRow(
                         title: String(localized: "stats.totalCount"),
-                        count: appModel.totalFocusedCount(for: .day)
+                        count: summary.count
                     )
                     statsDurationRow(
                         title: String(localized: "stats.totalDuration"),
-                        duration: appModel.totalFocusedDuration(for: .day)
+                        duration: summary.duration
                     )
                 }
             }
@@ -244,12 +246,13 @@ private extension StatisticsView {
         Section {
             Group {
                 if isCardExpanded("heatmap") {
+                    let durations = appModel.dailyFocusDurations(for: heatmapMonth)
                     FocusHeatmapView(
                         month: $heatmapMonth,
-                        durations: appModel.dailyFocusDurations(for: heatmapMonth),
+                        durations: durations,
                         checkInDates: appModel.checkInDates,
                         showCheckInMarks: false,
-                        headerTotalDuration: totalHeatmapDuration
+                        headerTotalDuration: durations.values.reduce(0, +)
                     )
                 }
             }
@@ -261,9 +264,6 @@ private extension StatisticsView {
         }
     }
 
-    var totalHeatmapDuration: TimeInterval {
-        appModel.dailyFocusDurations(for: heatmapMonth).values.reduce(0, +)
-    }
 }
 
 // MARK: - Distribution Card

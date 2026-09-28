@@ -5,45 +5,34 @@ enum Statistics {
 
     // MARK: - 专注时长聚合
 
-    /// 指定时间范围内的专注记录。
-    static func filteredSessions(sessions: [FocusSessionRecord], range: TimeRange, now: Date = .now) -> [FocusSessionRecord] {
-        let calendar = Calendar.current
-        return sessions.filter { record in
-            switch range {
-            case .day:
-                return calendar.isDateInToday(record.endedAt)
-            case .week:
-                return calendar.isDate(record.endedAt, equalTo: now, toGranularity: .weekOfYear)
-            case .month:
-                return calendar.isDate(record.endedAt, equalTo: now, toGranularity: .month)
-            }
+    /// 概览同时计算次数、总时长与日均值，避免多次扫描会话记录。
+    static func overview(sessions: [FocusSessionRecord], now: Date = .now) -> (count: Int, duration: TimeInterval, dailyAverage: TimeInterval) {
+        guard !sessions.isEmpty else { return (0, 0, 0) }
+        var duration: TimeInterval = 0
+        var earliest = sessions[0].startedAt
+        for session in sessions {
+            duration += session.focusedDuration
+            if session.startedAt < earliest { earliest = session.startedAt }
         }
-    }
-
-    /// 指定时间范围内的总专注时长。
-    static func totalFocusedDuration(sessions: [FocusSessionRecord], range: TimeRange) -> TimeInterval {
-        filteredSessions(sessions: sessions, range: range).reduce(0) { $0 + $1.focusedDuration }
-    }
-
-    /// 指定时间范围内的专注次数。
-    static func totalFocusedCount(sessions: [FocusSessionRecord], range: TimeRange) -> Int {
-        filteredSessions(sessions: sessions, range: range).count
-    }
-
-    /// 日均专注时长（从最早记录到今天）。
-    static func averageDailyDuration(sessions: [FocusSessionRecord]) -> TimeInterval {
-        guard let earliest = sessions.map(\.startedAt).min() else { return 0 }
         let calendar = Calendar.current
-        let earliestDay = calendar.startOfDay(for: earliest)
-        let today = calendar.startOfDay(for: .now)
-        let elapsedDays = calendar.dateComponents([.day], from: earliestDay, to: today).day ?? 0
-        let dayCount = max(1, elapsedDays + 1)
-        return sessions.reduce(0) { $0 + $1.focusedDuration } / Double(dayCount)
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: earliest),
+            to: calendar.startOfDay(for: now)
+        ).day ?? 0
+        return (sessions.count, duration, duration / Double(max(1, days + 1)))
     }
 
-    /// 累计总专注时长。
-    static func totalFocusedDurationAllTime(sessions: [FocusSessionRecord]) -> TimeInterval {
-        sessions.reduce(0) { $0 + $1.focusedDuration }
+    /// 当日卡片共用一次筛选和求和。
+    static func todaySummary(sessions: [FocusSessionRecord]) -> (count: Int, duration: TimeInterval) {
+        let calendar = Calendar.current
+        var count = 0
+        var duration: TimeInterval = 0
+        for session in sessions where calendar.isDateInToday(session.endedAt) {
+            count += 1
+            duration += session.focusedDuration
+        }
+        return (count, duration)
     }
 
     // MARK: - 热力图
@@ -56,13 +45,9 @@ enum Statistics {
         else { return [:] }
 
         let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
-        var durations = Dictionary(grouping: sessions.filter { record in
-            record.endedAt >= monthStart && record.endedAt < nextMonthStart
-        }) { record in
-            calendar.startOfDay(for: record.endedAt)
-        }
-        .mapValues { records in
-            records.reduce(0) { $0 + $1.focusedDuration }
+        var durations: [Date: TimeInterval] = [:]
+        for record in sessions where record.endedAt >= monthStart && record.endedAt < nextMonthStart {
+            durations[calendar.startOfDay(for: record.endedAt), default: 0] += record.focusedDuration
         }
 
         for day in range {
@@ -76,34 +61,38 @@ enum Statistics {
 
     /// 按时间范围的任务分布。
     static func taskDistribution(sessions: [FocusSessionRecord], range: TimeRange) -> [TaskDistributionEntry] {
-        let grouped = Dictionary(grouping: filteredSessions(sessions: sessions, range: range)) { record in
-            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        let component: Calendar.Component
+        switch range {
+        case .day: component = .day
+        case .week: component = .weekOfYear
+        case .month: component = .month
         }
-        return grouped.map { key, value in
-            TaskDistributionEntry(
-                id: key,
-                taskTitle: value.first?.taskTitle ?? "",
-                duration: value.reduce(0) { $0 + $1.focusedDuration },
-                colorSeed: key
-            )
-        }
-        .sorted(by: { $0.duration > $1.duration })
+        guard let interval = Calendar.current.dateInterval(of: component, for: .now) else { return [] }
+        return taskDistribution(sessions: sessions, in: interval)
     }
 
     /// 按指定日期的任务分布。
     static func taskDistribution(sessions: [FocusSessionRecord], on date: Date) -> [TaskDistributionEntry] {
-        let calendar = Calendar.current
-        let dayStart = calendar.startOfDay(for: date)
-        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
-        let filtered = sessions.filter { $0.endedAt >= dayStart && $0.endedAt < dayEnd }
-        let grouped = Dictionary(grouping: filtered) { record in
-            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        guard let interval = Calendar.current.dateInterval(of: .day, for: date) else { return [] }
+        return taskDistribution(sessions: sessions, in: interval)
+    }
+
+    private static func taskDistribution(sessions: [FocusSessionRecord], in interval: DateInterval) -> [TaskDistributionEntry] {
+        var totals: [String: (title: String, duration: TimeInterval)] = [:]
+        for record in sessions where record.endedAt >= interval.start && record.endedAt < interval.end {
+            let key = record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+            if var total = totals[key] {
+                total.duration += record.focusedDuration
+                totals[key] = total
+            } else {
+                totals[key] = (record.taskTitle, record.focusedDuration)
+            }
         }
-        return grouped.map { key, value in
+        return totals.map { key, value in
             TaskDistributionEntry(
                 id: key,
-                taskTitle: value.first?.taskTitle ?? "",
-                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                taskTitle: value.title,
+                duration: value.duration,
                 colorSeed: key
             )
         }
@@ -120,13 +109,9 @@ enum Statistics {
         let monthStart = monthStartDate(for: selectedMonth)
         let dayRange = calendar.range(of: .day, in: .month, for: monthStart) ?? 1..<2
         let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
-        let durationsByDay = Dictionary(grouping: sessions.filter { record in
-            record.endedAt >= monthStart && record.endedAt < nextMonthStart
-        }) { record in
-            calendar.startOfDay(for: record.endedAt)
-        }
-        .mapValues { records in
-            records.reduce(0) { $0 + $1.focusedDuration }
+        var durationsByDay: [Date: TimeInterval] = [:]
+        for record in sessions where record.endedAt >= monthStart && record.endedAt < nextMonthStart {
+            durationsByDay[calendar.startOfDay(for: record.endedAt), default: 0] += record.focusedDuration
         }
 
         return dayRange.compactMap { day in

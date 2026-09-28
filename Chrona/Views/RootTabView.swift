@@ -57,30 +57,7 @@ struct RootTabView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if shouldShowReturnToActiveButton, let session = appModel.activeSession {
-                Button {
-                    appModel.selectedTab = .active
-                } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) {
-                            Image(systemName: returnButtonIcon(for: session))
-                                .font(.subheadline.weight(.bold))
-                            Text(returnButtonTimeText(for: session))
-                                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                                .monospacedDigit()
-                        }
-
-                        Text(String(localized: "root.returnToActive.hint"))
-                            .font(.caption2.weight(.semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 42)
-                }
-                .buttonStyle(.glass(.regular.tint(returnButtonTint(for: session))))
-                .padding(.trailing, 20)
-                .padding(.bottom, 98)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-                .accessibilityLabel(String(localized: "root.returnToActive.accessibility"))
+                ReturnToActiveButton(session: session)
             }
         }
         // 为全局通知消息的出现/消失添加平滑动画
@@ -107,6 +84,41 @@ struct RootTabView: View {
     private var activeTabBadge: Text? {
         appModel.activeSession == nil ? nil : Text("1")
     }
+}
+
+/// 仅倒计时按钮订阅秒级时钟，标签页本身随会话状态更新。
+private struct ReturnToActiveButton: View {
+    @EnvironmentObject private var appModel: AppViewModel
+    @State private var displayedNow = Date.now
+    let session: ActiveSessionSnapshot
+
+    var body: some View {
+        Button {
+            appModel.selectedTab = .active
+        } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Image(systemName: returnButtonIcon(for: session))
+                        .font(.subheadline.weight(.bold))
+                    Text(returnButtonTimeText(for: session))
+                        .font(.system(.subheadline, design: .rounded).weight(.bold))
+                        .monospacedDigit()
+                }
+
+                Text(String(localized: "root.returnToActive.hint"))
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .frame(height: 42)
+        }
+        .buttonStyle(.glass(.regular.tint(returnButtonTint(for: session))))
+        .padding(.trailing, 20)
+        .padding(.bottom, 98)
+        .transition(.move(edge: .trailing).combined(with: .opacity))
+        .accessibilityLabel(String(localized: "root.returnToActive.accessibility"))
+        .onReceive(appModel.clock.$now) { displayedNow = $0 }
+    }
 
     private func returnButtonIcon(for session: ActiveSessionSnapshot) -> String {
         if session.isPaused {
@@ -128,11 +140,11 @@ struct RootTabView: View {
     }
 
     private func returnButtonTimeText(for session: ActiveSessionSnapshot) -> String {
-        guard let status = appModel.timerStatus else { return "--:--" }
+        let status = TimerEngine.status(for: session, now: displayedNow)
 
         if session.isPaused {
             guard let deadline = session.pauseDeadline else { return String(localized: "session.pause.indefinite") }
-            return appModel.formattedDuration(deadline.timeIntervalSince(appModel.now))
+            return appModel.formattedDuration(deadline.timeIntervalSince(displayedNow))
         }
 
         if session.phase == .rest {

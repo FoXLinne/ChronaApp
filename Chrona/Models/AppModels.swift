@@ -491,7 +491,7 @@ struct ChronaExportFile: Codable {
     }
 }
 
-struct ActiveSessionSnapshot: Codable {
+struct ActiveSessionSnapshot: Codable, Equatable {
     var taskID: UUID?
     var taskTitle: String
     var mode: FocusMode
@@ -531,10 +531,4 @@ struct DayTrendEntry: Identifiable {
     var duration: TimeInterval
 
     var id: Date { date }
-}
-
-struct RoutineTrendPoint: Identifiable {
-    var id: UUID = UUID()
-    var date: Date
-    var value: Double
 }

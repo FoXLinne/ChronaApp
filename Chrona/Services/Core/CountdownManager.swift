@@ -40,24 +40,6 @@ enum CountdownManager {
         return updated
     }
 
-    // MARK: - 筛选
-
-    /// 未来的倒数日（不包括今天）。
-    static func futureEvents(in events: [CountdownEvent], now: Date = .now) -> [CountdownEvent] {
-        events.filter { $0.date >= Calendar.current.startOfDay(for: now) && !Calendar.current.isDateInToday($0.date) }
-    }
-
-    /// 今天的倒数日。
-    static func todayEvents(in events: [CountdownEvent]) -> [CountdownEvent] {
-        events.filter { Calendar.current.isDateInToday($0.date) }
-    }
-
-    /// 过去的倒数日（不包括今天），按日期降序排列。
-    static func pastEvents(in events: [CountdownEvent], now: Date = .now) -> [CountdownEvent] {
-        events.filter { $0.date < Calendar.current.startOfDay(for: now) && !Calendar.current.isDateInToday($0.date) }
-            .sorted(by: { $0.date > $1.date })
-    }
-
     // MARK: - 工具
 
     /// 归一化日期：不含时间的事件截断到当天零点。

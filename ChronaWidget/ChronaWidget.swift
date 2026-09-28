@@ -136,7 +136,7 @@ private struct WidgetDurationValue: View {
 }
 
 struct TodayFocusWidget: Widget {
-    let kind: String = "TodayFocusWidget"
+    let kind: String = ChronaWidgetKind.todayFocus
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: TodayFocusProvider()) { entry in
@@ -404,7 +404,7 @@ private enum CountdownWidgetState {
 }
 
 struct CountdownEventWidget: Widget {
-    let kind: String = "CountdownEventWidget"
+    let kind: String = ChronaWidgetKind.countdownEvent
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: CountdownEventWidgetIntent.self, provider: CountdownEventProvider()) { entry in
@@ -528,10 +528,11 @@ struct MonthHeatmapWidgetEntryView: View {
     }
 
     private var heatmapGrid: some View {
-        LazyVGrid(columns: gridColumns, spacing: 3) {
+        let durations = durationsByDay
+        return LazyVGrid(columns: gridColumns, spacing: 3) {
             ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, day in
                 if let day {
-                    heatmapCell(day: day)
+                    heatmapCell(day: day, durations: durations)
                 } else {
                     Color.clear
                         .frame(width: 14, height: 14)
@@ -541,8 +542,8 @@ struct MonthHeatmapWidgetEntryView: View {
         }
     }
 
-    private func heatmapCell(day: Date) -> some View {
-        let duration = durationsByDay[Calendar.current.startOfDay(for: day)] ?? 0
+    private func heatmapCell(day: Date, durations: [Date: TimeInterval]) -> some View {
+        let duration = durations[Calendar.current.startOfDay(for: day)] ?? 0
         let isToday = Calendar.current.isDateInToday(day)
 
         return RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -612,7 +613,7 @@ struct MonthHeatmapWidgetEntryView: View {
 }
 
 struct MonthHeatmapWidget: Widget {
-    let kind: String = "MonthHeatmapWidget"
+    let kind: String = ChronaWidgetKind.monthHeatmap
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: MonthHeatmapProvider()) { entry in

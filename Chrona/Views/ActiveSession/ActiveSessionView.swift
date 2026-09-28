@@ -14,6 +14,7 @@ struct ActiveSessionView: View {
     @State private var batteryLevel: Float?
     @State private var isLandscapeForOverlay = false
     @State private var burnInOffset = CGSize.zero
+    @State private var displayedNow = Date.now
     @Environment(\.colorScheme) private var colorScheme
 
     private var isImmersive: Bool {
@@ -51,7 +52,8 @@ struct ActiveSessionView: View {
                     .opacity(isImmersive ? 1 : 0)
                     .animation(.easeInOut(duration: 0.3), value: isImmersive)
 
-                if let session = appModel.activeSession, let status = appModel.timerStatus {
+                if let session = appModel.activeSession {
+                    let status = TimerEngine.status(for: session, now: displayedNow)
                     Color.black
                         .ignoresSafeArea()
                         .opacity(session.phase == .focus && session.isPaused ? (isImmersive ? 0.22 : 0.3) : 0)
@@ -187,6 +189,7 @@ struct ActiveSessionView: View {
             BatteryStatusProvider.startMonitoring()
             refreshBatteryLevel()
         }
+        .onReceive(appModel.clock.$now) { displayedNow = $0 }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !isImmersive {
@@ -318,7 +321,7 @@ struct ActiveSessionView: View {
 
     private var statusBarContent: some View {
         HStack(spacing: 5) {
-            Text(appModel.now.formatted(.dateTime.hour().minute()))
+            Text(displayedNow.formatted(.dateTime.hour().minute()))
                 .font(.system(size: 11, weight: .regular, design: .rounded))
 
             if let batteryLevel {
@@ -451,7 +454,7 @@ struct ActiveSessionView: View {
     @ViewBuilder
     private func pauseStatusView(for session: ActiveSessionSnapshot) -> some View {
         if let deadline = session.pauseDeadline {
-            let remaining = max(0, deadline.timeIntervalSince(appModel.now))
+            let remaining = max(0, deadline.timeIntervalSince(displayedNow))
             VStack(spacing: 6) {
                 Label(String(localized: "session.pause.statusLimited"), systemImage: "pause.circle.fill")
                 Text(String(format: String(localized: "session.pause.remaining"), appModel.formattedDuration(remaining)))

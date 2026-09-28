@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var importSourceBuildNumber: Int?
     @State private var importSignatureMismatch = false
     @State private var exportFileURL: URL?
+    @State private var exportPreparationTask: Task<Void, Never>?
 
     private var isRuntimeLocked: Bool {
         appModel.activeSession != nil
@@ -176,9 +177,6 @@ struct SettingsView: View {
                 }
             }
 
-            // --- 演示版本声明（已注释，正式版移除）---
-            // ChronaDemoNotice()
-            // ---------------------------------------------------------
         }
         .chronaSoftScrollEdgeEffect()
         .navigationTitle(String(localized: "profile.settings"))
@@ -194,8 +192,9 @@ struct SettingsView: View {
             }
         }
         .onChange(of: appModel.settings) { _, _ in
-            prepareExportFile()
+            scheduleExportFilePreparation()
         }
+        .onDisappear { exportPreparationTask?.cancel() }
         .alert(String(localized: "settings.clearData.confirm.title"), isPresented: $showClearDataConfirm) {
             Button(String(localized: "common.cancel"), role: .cancel) {}
             Button(String(localized: "common.delete"), role: .destructive) {
@@ -353,6 +352,15 @@ struct SettingsView: View {
     }
 
     /// 提前生成分享文件，避免 ShareLink 首次弹出时同步编码和写入数据。
+    private func scheduleExportFilePreparation() {
+        exportPreparationTask?.cancel()
+        exportPreparationTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            prepareExportFile()
+        }
+    }
+
     private func prepareExportFile() {
         guard let data = appModel.exportData() else {
             exportFileURL = nil

@@ -8,38 +8,40 @@ struct CountdownView: View {
     @State private var pendingDeletion: CountdownEvent?
     @State private var searchText = ""
     @State private var selectedScopes = Set(CountdownScope.allCases)
+    @State private var currentDay = Calendar.current.startOfDay(for: .now)
 
     var body: some View {
         NavigationStack {
             List {
-                if selectedScopes.contains(.today), !filteredTodayEvents.isEmpty {
+                let events = filteredEventGroups
+                if !events.today.isEmpty {
                     Section {
-                        ForEach(filteredTodayEvents) { event in
+                        ForEach(events.today) { event in
                             eventRow(event, future: true)
                         }
                         .onDelete(perform: handleDeleteToday)
                     }
                 }
 
-                if selectedScopes.contains(.future), !filteredFutureEvents.isEmpty {
+                if !events.future.isEmpty {
                     Section(String(localized: "countdown.future")) {
-                        ForEach(filteredFutureEvents) { event in
+                        ForEach(events.future) { event in
                             eventRow(event, future: true)
                         }
                         .onDelete(perform: handleDeleteFuture)
                     }
                 }
 
-                if selectedScopes.contains(.past), !filteredPastEvents.isEmpty {
+                if !events.past.isEmpty {
                     Section(String(localized: "countdown.past")) {
-                        ForEach(filteredPastEvents) { event in
+                        ForEach(events.past) { event in
                             eventRow(event, future: false)
                         }
                         .onDelete(perform: handleDeletePast)
                     }
                 }
 
-                if filteredTodayEvents.isEmpty && filteredFutureEvents.isEmpty && filteredPastEvents.isEmpty {
+                if events.today.isEmpty && events.future.isEmpty && events.past.isEmpty {
                     Section {
                         countdownEmptyRow
                             .listRowSeparator(.hidden)
@@ -137,6 +139,10 @@ struct CountdownView: View {
                     secondaryButton: .cancel(Text(String(localized: "common.cancel")))
                 )
             }
+            .onReceive(appModel.clock.$now) { date in
+                let day = Calendar.current.startOfDay(for: date)
+                if day != currentDay { currentDay = day }
+            }
         }
     }
 
@@ -203,27 +209,40 @@ struct CountdownView: View {
     }
 
     private var filteredTodayEvents: [CountdownEvent] {
-        filteredEvents(for: .today)
+        filteredEventGroups.today
     }
 
     private var filteredFutureEvents: [CountdownEvent] {
-        filteredEvents(for: .future)
+        filteredEventGroups.future
     }
 
     private var filteredPastEvents: [CountdownEvent] {
-        filteredEvents(for: .past)
+        filteredEventGroups.past
     }
 
-    private func filteredEvents(for scope: CountdownScope) -> [CountdownEvent] {
-        let base: [CountdownEvent]
-        switch scope {
-        case .today: base = appModel.todayEvents
-        case .future: base = appModel.futureEvents
-        case .past: base = appModel.pastEvents
-        }
+    private struct EventGroups {
+        var today: [CountdownEvent] = []
+        var future: [CountdownEvent] = []
+        var past: [CountdownEvent] = []
+    }
+
+    /// 按日期和搜索条件一次分组；原数组按日期升序排列。
+    private var filteredEventGroups: EventGroups {
+        var groups = EventGroups()
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !keyword.isEmpty else { return base }
-        return base.filter { $0.title.lowercased().contains(keyword) }
+        let calendar = Calendar.current
+        for event in appModel.countdownEvents {
+            if !keyword.isEmpty && !event.title.lowercased().contains(keyword) { continue }
+            if calendar.isDate(event.date, inSameDayAs: currentDay) {
+                if selectedScopes.contains(.today) { groups.today.append(event) }
+            } else if event.date > currentDay {
+                if selectedScopes.contains(.future) { groups.future.append(event) }
+            } else if selectedScopes.contains(.past) {
+                groups.past.append(event)
+            }
+        }
+        groups.past.reverse()
+        return groups
     }
 
     private func handleDeleteToday(_ offsets: IndexSet) {
@@ -464,20 +483,17 @@ private struct CountdownRow: View {
         }
     }
 
+    @ViewBuilder
     private var dayLabel: some View {
         if dayState == .today {
-            return AnyView(
-                Text(String(localized: "countdown.days.today.value"))
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .foregroundStyle(.tint)
-            )
-        }
+            Text(String(localized: "countdown.days.today.value"))
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .foregroundStyle(.tint)
+        } else {
+            let parts = dayTemplate.localizedTemplateParts()
 
-        let parts = dayTemplate.localizedTemplateParts()
-
-        return AnyView(
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if !parts.prefix.isEmpty {
                     Text(parts.prefix)
@@ -495,8 +511,8 @@ private struct CountdownRow: View {
                         .font(.footnote.weight(.semibold))
                 }
             }
-            .foregroundStyle(dayState == .future ? AnyShapeStyle(.blue) : AnyShapeStyle(.secondary))
-        )
+            .foregroundStyle(dayState == .future ? Color.blue : Color.secondary)
+        }
     }
 
 }

@@ -1,5 +1,12 @@
 import Foundation
 
+/// 主应用与扩展共用的 Widget 类型标识。
+enum ChronaWidgetKind {
+    static let todayFocus = "TodayFocusWidget"
+    static let countdownEvent = "CountdownEventWidget"
+    static let monthHeatmap = "MonthHeatmapWidget"
+}
+
 /// Widget 只需要展示倒数日的轻量字段，避免依赖主 App 的完整数据模型。
 struct SharedCountdownEvent: Codable, Hashable, Identifiable {
     var id: UUID

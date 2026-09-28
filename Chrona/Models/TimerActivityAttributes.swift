@@ -3,13 +3,13 @@ import Foundation
 
 /// 灵动岛 / 实时活动的属性与状态模型
 /// 此文件需同时加入主 App Target 和 ChronaWidget Target 的 Target Membership
-struct TimerActivityAttributes: ActivityAttributes {
+nonisolated struct TimerActivityAttributes: ActivityAttributes {
 
     // MARK: - 静态属性（会话创建时固定）
     var taskID: UUID?
 
     // MARK: - 动态内容状态（每次 syncLiveActivity 推送）
-    public struct ContentState: Codable, Hashable {
+    public nonisolated struct ContentState: Codable, Hashable {
 
         /// 倒计时 / 番茄钟：会话结束的未来时间点，供 Text(.., style: .timer) 自动倒计
         /// 秒表模式时为 nil

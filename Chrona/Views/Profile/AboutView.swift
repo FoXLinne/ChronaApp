@@ -155,7 +155,6 @@ struct AboutView: View {
             .listRowSeparator(.hidden)
 
             // --- 演示版本声明（已注释，正式版移除）---
-            // ChronaDemoNotice()
             // ---------------------------------------------------------
         }
         .listStyle(.insetGrouped)

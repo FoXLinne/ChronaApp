@@ -7,6 +7,11 @@ import UniformTypeIdentifiers
 import WidgetKit
 
 @MainActor
+final class AppClock: ObservableObject {
+    @Published var now: Date = .now
+}
+
+@MainActor
 final class AppViewModel: ObservableObject {
     @Published private(set) var tasks: [TaskItem]
     @Published private(set) var sessions: [FocusSessionRecord]
@@ -16,7 +21,8 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var checkInDates: [Date]
     @Published private(set) var lastTaskID: UUID?
     @Published var activeSession: ActiveSessionSnapshot?
-    @Published var now: Date = .now
+    let clock = AppClock()
+    var now: Date { .now }
     @Published var selectedStatisticsMonth: Date = .now
     @Published var statisticsTrendScrollDate: Date = .now
     @Published var quickLaunchTaskID: UUID?
@@ -33,6 +39,7 @@ final class AppViewModel: ObservableObject {
     private let notifications = Notifications()
     private let logger = Logger(subsystem: "top.kaedekr.chrona", category: "AppViewModel")
     private var ticker: AnyCancellable?
+    private var tickerInterval: TimeInterval?
     private var cancellables = Set<AnyCancellable>()
     private var noticeTask: Task<Void, Never>?
     private let isPreviewMode: Bool
@@ -76,6 +83,7 @@ final class AppViewModel: ObservableObject {
             syncCountdownReminders()
         }
         refreshDerivedState()
+        syncAllWidgetData()
         reconcileActiveSessionIfNeeded()
         resetStatisticsTrendToToday()
         refreshCheckInCache()
@@ -131,7 +139,8 @@ final class AppViewModel: ObservableObject {
     // MARK: - 计算属性
 
     var sortedTasks: [TaskItem] {
-        tasks.sorted(by: { $0.order < $1.order })
+        // 加载与每次任务变更均维护排序，视图读取无需重复排序。
+        tasks
     }
 
     var activeTask: TaskItem? {
@@ -142,11 +151,6 @@ final class AppViewModel: ObservableObject {
     var quickLaunchTask: TaskItem? {
         guard let id = quickLaunchTaskID else { return nil }
         return tasks.first(where: { $0.id == id })
-    }
-
-    var timerStatus: TimerStatus? {
-        guard let activeSession else { return nil }
-        return TimerEngine.status(for: activeSession, now: now)
     }
 
     var shouldShowMinimalMode: Bool {
@@ -197,20 +201,12 @@ final class AppViewModel: ObservableObject {
         TaskManager.isTaskNameDuplicate(title, excluding: id, in: tasks)
     }
 
-    func deleteTasks(at offsets: IndexSet) {
-        tasks = TaskManager.deleteTasks(at: offsets, sortedTasks: sortedTasks, in: tasks)
-    }
-
     func deleteTask(id: UUID) {
         tasks = TaskManager.deleteTask(id: id, in: tasks)
     }
 
     func moveTasks(from source: IndexSet, to destination: Int) {
         tasks = TaskManager.moveTasks(from: source, to: destination, sortedTasks: sortedTasks)
-    }
-
-    func completedCountToday(for task: TaskItem) -> Int {
-        TaskManager.completedCountToday(for: task, in: sessions)
     }
 
     // MARK: - 倒数日管理（委托 CountdownManager）
@@ -226,7 +222,7 @@ final class AppViewModel: ObservableObject {
         if let last = countdownEvents.last {
             syncCountdownReminder(for: last)
         }
-        syncWidgetData()
+        syncCountdownWidgetData()
     }
 
     func updateCountdownEvent(_ event: CountdownEvent) {
@@ -234,25 +230,13 @@ final class AppViewModel: ObservableObject {
         if let updated = countdownEvents.first(where: { $0.id == event.id }) {
             syncCountdownReminder(for: updated)
         }
-        syncWidgetData()
+        syncCountdownWidgetData()
     }
 
     func deleteCountdownEvent(id: UUID) {
         countdownEvents = CountdownManager.deleteEvent(id: id, in: countdownEvents)
         notifications.cancelCountdownReminder(eventID: id)
-        syncWidgetData()
-    }
-
-    var futureEvents: [CountdownEvent] {
-        CountdownManager.futureEvents(in: countdownEvents, now: now)
-    }
-
-    var todayEvents: [CountdownEvent] {
-        CountdownManager.todayEvents(in: countdownEvents)
-    }
-
-    var pastEvents: [CountdownEvent] {
-        CountdownManager.pastEvents(in: countdownEvents, now: now)
+        syncCountdownWidgetData()
     }
 
     // MARK: - 会话管理（委托 SessionManager）
@@ -293,7 +277,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
-        now = .now
+        clock.now = .now
 
         switch phase {
         case .active:
@@ -305,7 +289,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func stopConsequence(forceAbandon: Bool = false) -> StopConsequence {
+    func stopConsequence() -> StopConsequence {
         SessionManager.stopConsequence(
             activeSession: activeSession,
             now: now,
@@ -334,12 +318,11 @@ final class AppViewModel: ObservableObject {
         refreshDerivedState(shouldSyncActivity: true)
     }
 
-    func stopActiveSession(forceAbandon: Bool = false) {
+    func stopActiveSession() {
         let result = SessionManager.stopActiveSession(
             activeSession: activeSession,
             now: now,
-            settings: settings,
-            autoMoveCompletedTaskToTop: settings.autoMoveCompletedTaskToTop
+            settings: settings
         )
 
         if let notice = result.notice {
@@ -350,12 +333,10 @@ final class AppViewModel: ObservableObject {
            let session = activeSession,
            !SessionManager.hasRecordedSession(sessions: sessions, session: session, duration: record.focusedDuration, completed: record.wasCompleted) {
             sessions.insert(record, at: 0)
+            syncFocusWidgetData()
             // 自动置顶已完成的任务
             if settings.autoMoveCompletedTaskToTop, let taskID = session.taskID, let index = tasks.firstIndex(where: { $0.id == taskID }) {
-                var moved = tasks.remove(at: index)
-                moved.order = 0
-                tasks.insert(moved, at: 0)
-                tasks = TaskManager.moveTasks(from: IndexSet(integer: 0), to: 0, sortedTasks: sortedTasks)
+                tasks = TaskManager.moveTasks(from: IndexSet(integer: index), to: 0, sortedTasks: tasks)
             }
         }
 
@@ -411,31 +392,24 @@ final class AppViewModel: ObservableObject {
     @discardableResult
     func checkInToday() -> Bool {
         let result = CheckIn.checkInToday(in: checkInDates)
+        guard result.success else { return false }
         checkInDates = result.dates
         refreshCheckInCache()
-        return result.success
+        return true
     }
 
     // MARK: - 统计数据（委托 Statistics）
 
+    func focusOverview() -> (count: Int, duration: TimeInterval, dailyAverage: TimeInterval) {
+        Statistics.overview(sessions: sessions)
+    }
+
+    func todayFocusSummary() -> (count: Int, duration: TimeInterval) {
+        Statistics.todaySummary(sessions: sessions)
+    }
+
     func dailyFocusDurations(for month: Date) -> [Date: TimeInterval] {
         Statistics.dailyFocusDurations(sessions: sessions, for: month)
-    }
-
-    func totalFocusedDuration(for range: TimeRange) -> TimeInterval {
-        Statistics.totalFocusedDuration(sessions: sessions, range: range)
-    }
-
-    func totalFocusedCount(for range: TimeRange) -> Int {
-        Statistics.totalFocusedCount(sessions: sessions, range: range)
-    }
-
-    func averageDailyDuration() -> TimeInterval {
-        Statistics.averageDailyDuration(sessions: sessions)
-    }
-
-    var totalFocusedDurationAllTime: TimeInterval {
-        Statistics.totalFocusedDurationAllTime(sessions: sessions)
     }
 
     func taskDistribution(range: TimeRange) -> [TaskDistributionEntry] {
@@ -488,11 +462,16 @@ final class AppViewModel: ObservableObject {
     // MARK: - 内部：计时器
 
     private func startTicker() {
-        ticker = Timer.publish(every: 1, on: .main, in: .common)
+        let interval: TimeInterval = activeSession == nil ? 60 : 1
+        guard tickerInterval != interval else { return }
+        tickerInterval = interval
+        ticker?.cancel()
+        clock.now = .now
+        ticker = Timer.publish(every: interval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] date in
                 guard let self else { return }
-                now = date
+                clock.now = date
                 handleTimerTick()
             }
     }
@@ -516,7 +495,10 @@ final class AppViewModel: ObservableObject {
             }
         }
 
-        activeSession = result.newActiveSession
+        let sessionChanged = activeSession != result.newActiveSession
+        if sessionChanged {
+            activeSession = result.newActiveSession
+        }
 
         if let stopResult = result.stopResult {
             applyStopResult(stopResult, after: finishedSession, activeTask: finishedTask)
@@ -526,8 +508,9 @@ final class AppViewModel: ObservableObject {
             activeSession = nil
         }
 
-        refreshDerivedState()
-        syncLiveActivity()
+        if sessionChanged || result.stopResult != nil || result.shouldEndRest {
+            refreshDerivedState(shouldSyncActivity: true)
+        }
     }
 
     private func reconcileActiveSessionIfNeeded() {
@@ -577,10 +560,9 @@ final class AppViewModel: ObservableObject {
 
         if let record = result.recordedSession {
             sessions.insert(record, at: 0)
+            syncFocusWidgetData()
             if settings.autoMoveCompletedTaskToTop, let taskID = record.taskID, let index = tasks.firstIndex(where: { $0.id == taskID }) {
-                var moved = tasks.remove(at: index)
-                moved.order = 0
-                tasks.insert(moved, at: 0)
+                tasks = TaskManager.moveTasks(from: IndexSet(integer: index), to: 0, sortedTasks: tasks)
             }
         }
 
@@ -645,7 +627,6 @@ final class AppViewModel: ObservableObject {
         guard !isPreviewMode else { return }
 
         persistence.save(data: currentDataStore())
-        refreshDerivedState()
     }
 
     private func persistSettingsState(_ newSettings: AppSettings) {
@@ -653,7 +634,6 @@ final class AppViewModel: ObservableObject {
 
         // @Published 在 willSet 发出新值；这里必须保存 publisher 传入的新设置，避免杀进程时写回旧值。
         persistence.save(settings: currentSettingsStore(settings: newSettings))
-        refreshDerivedState()
     }
 
     private func persistState() {
@@ -661,7 +641,6 @@ final class AppViewModel: ObservableObject {
 
         persistence.save(data: currentDataStore())
         persistence.save(settings: currentSettingsStore())
-        refreshDerivedState()
     }
 
     // MARK: - 内部：副作用
@@ -692,10 +671,14 @@ final class AppViewModel: ObservableObject {
             .sink { [weak self] _ in self?.syncLiveActivity() }
             .store(in: &cancellables)
 
-        // 签到缓存：checkInDates 变化时重算连续天数
-        $checkInDates
+        // 屏幕常亮开关改变时应用当前设置。
+        $settings
             .dropFirst()
-            .sink { [weak self] _ in self?.refreshCheckInCache() }
+            .removeDuplicates { $0.keepScreenAwake == $1.keepScreenAwake }
+            .sink { [weak self] newSettings in
+                guard let self else { return }
+                ScreenAwakeController.update(isEnabled: newSettings.keepScreenAwake && self.activeSession != nil)
+            }
             .store(in: &cancellables)
     }
 
@@ -867,18 +850,33 @@ final class AppViewModel: ObservableObject {
     // MARK: - 内部：工具
 
     private func refreshDerivedState(shouldSyncActivity: Bool = false) {
+        startTicker()
         ScreenAwakeController.update(isEnabled: settings.keepScreenAwake && activeSession != nil)
         if shouldSyncActivity {
             syncLiveActivity()
         }
-        syncWidgetData()
     }
 
-    private func syncWidgetData() {
-        let todayDuration = sessions
-            .filter { Calendar.current.isDateInToday($0.endedAt) }
-            .reduce(0) { $0 + $1.focusedDuration }
-        SharedStore.syncTodayFocusDuration(todayDuration)
+    private func syncAllWidgetData() {
+        syncFocusWidgetData()
+        syncCountdownWidgetData()
+    }
+
+    private func syncFocusWidgetData() {
+        let durations = dailyFocusDurations(for: .now)
+        let today = Calendar.current.startOfDay(for: .now)
+        SharedStore.syncTodayFocusDuration(durations[today] ?? 0)
+        SharedStore.syncMonthlyFocusDurations(
+            durations.map { day, duration in
+                SharedDailyFocusDuration(day: day, duration: duration)
+            }
+            .sorted(by: { $0.day < $1.day })
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: ChronaWidgetKind.todayFocus)
+        WidgetCenter.shared.reloadTimelines(ofKind: ChronaWidgetKind.monthHeatmap)
+    }
+
+    private func syncCountdownWidgetData() {
         SharedStore.syncCountdownEvents(
             countdownEvents.map {
                 SharedCountdownEvent(
@@ -889,14 +887,7 @@ final class AppViewModel: ObservableObject {
                 )
             }
         )
-        SharedStore.syncMonthlyFocusDurations(
-            dailyFocusDurations(for: .now)
-                .map { day, duration in
-                    SharedDailyFocusDuration(day: day, duration: duration)
-                }
-                .sorted(by: { $0.day < $1.day })
-        )
-        WidgetCenter.shared.reloadAllTimelines()
+        WidgetCenter.shared.reloadTimelines(ofKind: ChronaWidgetKind.countdownEvent)
     }
 
     private func showNotice(_ message: String) {
@@ -938,6 +929,7 @@ final class AppViewModel: ObservableObject {
         profile = ProfileInfo.default
         settings = AppSettings.default
         checkInDates = []
+        refreshCheckInCache()
         lastTaskID = nil
         quickLaunchTaskID = nil
         activeSession = nil
@@ -958,6 +950,7 @@ final class AppViewModel: ObservableObject {
         notifications.cancelDailyReminder()
         notifications.cancelAllCountdownReminders()
         refreshDerivedState(shouldSyncActivity: true)
+        syncAllWidgetData()
         showNotice(String(localized: "settings.clearData.success"))
     }
 
@@ -1001,6 +994,7 @@ final class AppViewModel: ObservableObject {
         profile = result.profile
         settings = result.settings
         checkInDates = CheckIn.normalizedDates(result.checkInDates)
+        refreshCheckInCache()
         lastTaskID = result.lastTaskID
         quickLaunchTaskID = result.lastTaskID
         activeSession = nil
@@ -1019,6 +1013,7 @@ final class AppViewModel: ObservableObject {
         persistence.save(settings: currentSettingsStore())
 
         refreshDerivedState(shouldSyncActivity: true)
+        syncAllWidgetData()
         syncReminder()
         syncCountdownReminders()
 
