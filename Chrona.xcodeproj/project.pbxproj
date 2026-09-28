@@ -6,19 +6,97 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		8BC07F592F997003009D3386 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BC07F582F997003009D3386 /* WidgetKit.framework */; };
+		8BC07F5B2F997003009D3386 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BC07F5A2F997003009D3386 /* SwiftUI.framework */; };
+		8BC07F6C2F997004009D3386 /* ChronaWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8BC07F562F997003009D3386 /* ChronaWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		8BC07F6A2F997004009D3386 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8BC9CE4D2F90D5B800757CD5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8BC07F552F997003009D3386;
+			remoteInfo = ChronaWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8BC07F712F997004009D3386 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8BC07F6C2F997004009D3386 /* ChronaWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		8BC07F562F997003009D3386 /* ChronaWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ChronaWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8BC07F582F997003009D3386 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		8BC07F5A2F997003009D3386 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		8BC9CE552F90D5B800757CD5 /* Chrona.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chrona.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8BC07F6D2F997004009D3386 /* Exceptions for "ChronaWidget" folder in "ChronaWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8BC07F552F997003009D3386 /* ChronaWidgetExtension */;
+		};
+		8BC07F732F997048009D3386 /* Exceptions for "Chrona" folder in "ChronaWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Models/TimerActivityAttributes.swift,
+			);
+			target = 8BC07F552F997003009D3386 /* ChronaWidgetExtension */;
+		};
+		8BC07F762F997124009D3386 /* Exceptions for "Chrona" folder in "Chrona" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8BC9CE542F90D5B800757CD5 /* Chrona */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		8BC07F5C2F997003009D3386 /* ChronaWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8BC07F6D2F997004009D3386 /* Exceptions for "ChronaWidget" folder in "ChronaWidgetExtension" target */,
+			);
+			path = ChronaWidget;
+			sourceTree = "<group>";
+		};
 		8BC9CE572F90D5B800757CD5 /* Chrona */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8BC07F762F997124009D3386 /* Exceptions for "Chrona" folder in "Chrona" target */,
+				8BC07F732F997048009D3386 /* Exceptions for "Chrona" folder in "ChronaWidgetExtension" target */,
+			);
 			path = Chrona;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		8BC07F532F997003009D3386 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8BC07F5B2F997003009D3386 /* SwiftUI.framework in Frameworks */,
+				8BC07F592F997003009D3386 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8BC9CE522F90D5B800757CD5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -29,10 +107,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		8BC07F572F997003009D3386 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8BC07F582F997003009D3386 /* WidgetKit.framework */,
+				8BC07F5A2F997003009D3386 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		8BC9CE4C2F90D5B800757CD5 = {
 			isa = PBXGroup;
 			children = (
 				8BC9CE572F90D5B800757CD5 /* Chrona */,
+				8BC07F5C2F997003009D3386 /* ChronaWidget */,
+				8BC07F572F997003009D3386 /* Frameworks */,
 				8BC9CE562F90D5B800757CD5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				8BC9CE552F90D5B800757CD5 /* Chrona.app */,
+				8BC07F562F997003009D3386 /* ChronaWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +138,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		8BC07F552F997003009D3386 /* ChronaWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8BC07F6E2F997004009D3386 /* Build configuration list for PBXNativeTarget "ChronaWidgetExtension" */;
+			buildPhases = (
+				8BC07F522F997003009D3386 /* Sources */,
+				8BC07F532F997003009D3386 /* Frameworks */,
+				8BC07F542F997003009D3386 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8BC07F5C2F997003009D3386 /* ChronaWidget */,
+			);
+			name = ChronaWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = ChronaWidgetExtension;
+			productReference = 8BC07F562F997003009D3386 /* ChronaWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		8BC9CE542F90D5B800757CD5 /* Chrona */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8BC9CE602F90D5B900757CD5 /* Build configuration list for PBXNativeTarget "Chrona" */;
@@ -55,10 +167,12 @@
 				8BC9CE512F90D5B800757CD5 /* Sources */,
 				8BC9CE522F90D5B800757CD5 /* Frameworks */,
 				8BC9CE532F90D5B800757CD5 /* Resources */,
+				8BC07F712F997004009D3386 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				8BC07F6B2F997004009D3386 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8BC9CE572F90D5B800757CD5 /* Chrona */,
@@ -80,6 +194,9 @@
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
+					8BC07F552F997003009D3386 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
 					8BC9CE542F90D5B800757CD5 = {
 						CreatedOnToolsVersion = 26.4;
 					};
@@ -101,11 +218,19 @@
 			projectRoot = "";
 			targets = (
 				8BC9CE542F90D5B800757CD5 /* Chrona */,
+				8BC07F552F997003009D3386 /* ChronaWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		8BC07F542F997003009D3386 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8BC9CE532F90D5B800757CD5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -116,6 +241,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		8BC07F522F997003009D3386 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8BC9CE512F90D5B800757CD5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -125,7 +257,77 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		8BC07F6B2F997004009D3386 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8BC07F552F997003009D3386 /* ChronaWidgetExtension */;
+			targetProxy = 8BC07F6A2F997004009D3386 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		8BC07F6F2F997004009D3386 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 41;
+				DEVELOPMENT_TEAM = 923J3ZS887;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChronaWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ChronaWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1.4.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = top.kaedekr.chrona.dev.ChronaWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8BC07F702F997004009D3386 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 41;
+				DEVELOPMENT_TEAM = 923J3ZS887;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChronaWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ChronaWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1.4.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = top.kaedekr.chrona.ChronaWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		8BC9CE5E2F90D5B900757CD5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -253,15 +455,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = appicon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 41;
 				DEVELOPMENT_TEAM = 923J3ZS887;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Chrona/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "一刻";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -273,7 +477,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4.dev;
 				PRODUCT_BUNDLE_IDENTIFIER = top.kaedekr.chrona.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -297,15 +501,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = appicon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 41;
 				DEVELOPMENT_TEAM = 923J3ZS887;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Chrona/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "一刻";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -317,7 +523,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4.dev;
 				PRODUCT_BUNDLE_IDENTIFIER = top.kaedekr.chrona;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -338,6 +544,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		8BC07F6E2F997004009D3386 /* Build configuration list for PBXNativeTarget "ChronaWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8BC07F6F2F997004009D3386 /* Debug */,
+				8BC07F702F997004009D3386 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		8BC9CE502F90D5B800757CD5 /* Build configuration list for PBXProject "Chrona" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -183,6 +183,10 @@ struct AboutView: View {
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
+
+            // --- DEMO VERSION NOTICE (Can be removed in production) ---
+            ChronaDemoNotice()
+            // ---------------------------------------------------------
         }
         .listStyle(.insetGrouped)
         .navigationTitle(String(localized: "profile.about"))

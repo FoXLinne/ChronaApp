@@ -186,6 +186,10 @@ struct SettingsView: View {
                     Text(String(localized: "settings.clearData"))
                 }
             }
+
+            // --- DEMO VERSION NOTICE (Can be removed in production) ---
+            ChronaDemoNotice()
+            // ---------------------------------------------------------
         }
         .navigationTitle(String(localized: "profile.settings"))
         .navigationBarTitleDisplayMode(.inline)
