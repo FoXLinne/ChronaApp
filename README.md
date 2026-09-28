@@ -104,7 +104,7 @@ ChronaApp/
 
 ## 技术栈
 
-- **语言**：Swift 5
+- **语言工具链**：Swift 6.4
 - **界面框架**：SwiftUI
 - **应用与小组件**：WidgetKit、ActivityKit
 - **最低系统版本**：iOS 27.0
