@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TaskEditorView: View {
+    @EnvironmentObject private var appModel: AppViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String
@@ -30,7 +31,16 @@ struct TaskEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(String(localized: "task.name"), text: $title)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField(String(localized: "task.name"), text: $title)
+                        
+                        if isDuplicateName {
+                            Text(String(localized: "task.error.duplicateName"))
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
+                    }
+
                     Picker(String(localized: "task.mode"), selection: $mode) {
                         Text(String(localized: "mode.pomodoro")).tag(FocusMode.pomodoro)
                         Text(String(localized: "mode.stopwatch")).tag(FocusMode.stopwatch)
@@ -97,7 +107,7 @@ struct TaskEditorView: View {
                     .buttonStyle(.borderedProminent)
                     // .buttonBorderShape(.circle)
                     // .tint(.accentColor)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isDuplicateName)
                 }
             }
             .alert(String(localized: "task.countdown.advanced.title"), isPresented: $showAdvancedCountdownEditor) {
@@ -142,6 +152,10 @@ struct TaskEditorView: View {
 
     private var countdownMinutes: Int {
         min(max(Int((countdownDuration / 60).rounded()), 1), 300)
+    }
+
+    private var isDuplicateName: Bool {
+        _appModel.wrappedValue.isTaskNameDuplicate(title, excluding: task?.id)
     }
 
     private var countdownSliderMinutesBinding: Binding<Double> {

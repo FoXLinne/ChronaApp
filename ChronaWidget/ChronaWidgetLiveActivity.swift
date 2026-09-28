@@ -41,30 +41,30 @@ private struct LockScreenBannerView: View {
     let state: TimerActivityAttributes.ContentState
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             // 模式图标
             Image(systemName: state.modeSystemImage)
-                .font(.title2)
+                .font(.title)
                 .foregroundStyle(Color("AccentColor"))
-                .frame(width: 32)
+                .frame(width: 36)
 
             // 任务信息
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(state.taskTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline.weight(.semibold))
                     .lineLimit(1)
                 Text(state.modeLabel)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
             // 计时器 + 状态标签
-            VStack(alignment: .trailing, spacing: 3) {
-                TimerDisplayView(state: state, font: .system(.title2, design: .rounded).monospacedDigit().bold())
+            VStack(alignment: .trailing, spacing: 4) {
+                TimerDisplayView(state: state, font: .system(.title, design: .rounded).monospacedDigit().bold())
                 Text(state.phaseLabel)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
@@ -122,7 +122,7 @@ private struct ExpandedBottomView: View {
             
             Spacer()
             
-            // 右下（原本是状态标签，现在放计时器）
+            // 右下：计时器（统一使用最大的 .largeTitle 字体）
             TimerDisplayView(state: state, font: .system(.largeTitle, design: .rounded).monospacedDigit().bold())
         }
         .padding(.horizontal, 16)
@@ -162,15 +162,18 @@ private struct TimerDisplayView: View {
         Group {
             if state.isPaused {
                 Text(state.pausedTimerText)
+                    .font(font)
             } else if state.isStopwatch {
                 Text(state.elapsedReferenceDate, style: .timer)
+                    .font(font)
             } else if let endTime = state.endTime {
                 Text(endTime, style: .timer)
+                    .font(font)
             } else {
                 Text("--:--")
+                    .font(font)
             }
         }
-        .font(font)
         .multilineTextAlignment(.trailing)
         .foregroundStyle(state.isPaused ? Color.secondary : Color("AccentColor"))
         .lineLimit(1)

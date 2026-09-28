@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import SwiftUI
 import ActivityKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -132,6 +133,12 @@ final class AppViewModel: ObservableObject {
         guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
         tasks[index] = task
         reindexTasks()
+    }
+
+    /// 检查任务名是否冲突（排除当前正在编辑的任务 ID）
+    func isTaskNameDuplicate(_ title: String, excluding id: UUID?) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tasks.contains { $0.id != id && $0.title.lowercased() == trimmed.lowercased() }
     }
 
     func deleteTasks(at offsets: IndexSet) {
@@ -826,6 +833,13 @@ final class AppViewModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] _ in self?.syncReminder() }
             .store(in: &cancellables)
+
+        // Live Activity 同步：开关变更时立即启停灵动岛/锁屏实时活动
+        $settings
+            .dropFirst()
+            .removeDuplicates { $0.liveActivitiesEnabled == $1.liveActivitiesEnabled }
+            .sink { [weak self] _ in self?.syncLiveActivity() }
+            .store(in: &cancellables)
     }
 
     private func persistState() {
@@ -915,5 +929,68 @@ final class AppViewModel: ObservableObject {
         notifications.cancelDailyReminder()
         refreshDerivedState(shouldSyncActivity: true)
         showNotice(String(localized: "settings.clearData.success"))
+    }
+
+    // MARK: - 数据导入导出
+    
+    /// 导出数据为 JSON 文件
+    func exportData() -> Data? {
+        guard !isPreviewMode else { return nil }
+        
+        let snapshot = AppSnapshot(
+            tasks: tasks,
+            sessions: sessions,
+            countdownEvents: countdownEvents,
+            profile: profile,
+            settings: settings,
+            checkInDates: checkInDates,
+            lastTaskID: lastTaskID,
+            activeSession: activeSession
+        )
+        
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .prettyPrinted
+        
+        return try? encoder.encode(snapshot)
+    }
+    
+    /// 导入数据从 JSON 文件
+    func importData(from data: Data) -> Bool {
+        guard !isPreviewMode else { return false }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        guard let snapshot = try? decoder.decode(AppSnapshot.self, from: data) else {
+            return false
+        }
+        
+        // 应用导入的数据
+        tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
+        sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+        countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
+        profile = snapshot.profile
+        settings = snapshot.settings
+        checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
+        lastTaskID = snapshot.lastTaskID
+        quickLaunchTaskID = snapshot.lastTaskID
+        activeSession = snapshot.activeSession
+        
+        // 持久化数据
+        persistence.save(snapshot)
+        refreshDerivedState(shouldSyncActivity: true)
+        syncReminder()
+        
+        showNotice(String(localized: "settings.importData.success"))
+        return true
+    }
+}
+
+// MARK: - 自定义文件类型
+
+extension UTType {
+    static var chronaData: UTType {
+        UTType.json
     }
 }
