@@ -104,9 +104,8 @@ ChronaApp/
 
 ## 技术栈
 
-- **语言工具链**：Swift 6.4
+- **语言工具链**：Swift 6
 - **界面框架**：SwiftUI
-- **应用与小组件**：WidgetKit、ActivityKit
 - **最低系统版本**：iOS 27.0
 
 ## 构建要求
@@ -119,12 +118,6 @@ ChronaApp/
 1. 使用 Xcode 打开 `Chrona.xcodeproj`
 2. 选择 `Chrona` scheme
 3. 选择运行设备并使用 `Cmd + R` 构建运行
-
-## 设计原则
-
-- 使用 SwiftUI 与 Apple 平台原生框架构建界面
-- 优先采用系统交互与辅助功能规范
-- 将任务与专注记录保存在设备本地，并提供用户控制的数据备份
 
 ## 许可证
 
