@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct ActiveSessionView: View {
@@ -9,17 +10,43 @@ struct ActiveSessionView: View {
     @State private var hasPlayedInitialImmersiveTransition = false
     @State private var disableClockAnimation = false
     @State private var showSettings = false
+    @State private var timerDisplayDraft = AppSettings.default
+    @State private var currentTime = Date.now
+    @State private var batteryLevel: Float = -1
+    @State private var isLandscapeForOverlay = false
+    @State private var burnInOffset = CGSize.zero
+    @Environment(\.colorScheme) private var colorScheme
 
     private var isImmersive: Bool {
         appModel.shouldShowMinimalMode && !revealControls
     }
 
+    private var primaryForeground: Color {
+        if isImmersive { return .white }
+        return appModel.settings.showPersonalizedBackground ? .white : .primary
+    }
+
+    private var secondaryForeground: Color {
+        if isImmersive { return .white.opacity(0.75) }
+        return appModel.settings.showPersonalizedBackground ? .white.opacity(0.75) : .secondary
+    }
+
+    private var statusBarForeground: Color {
+        if isImmersive { return .white.opacity(0.35) }
+        if appModel.settings.showPersonalizedBackground { return .white.opacity(0.55) }
+        return colorScheme == .dark ? .white.opacity(0.45) : .primary.opacity(0.55)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let isLandscape = geometry.size.width > geometry.size.height
-            
+
             ZStack {
-                AppBackground(seed: appModel.activeTask?.backgroundName ?? "sunset")
+                if appModel.settings.showPersonalizedBackground {
+                    AppBackground(seed: appModel.activeTask?.backgroundName ?? "sunset")
+                } else {
+                    AppBackgroundLite()
+                }
                 Color.black
                     .ignoresSafeArea()
                     .opacity(isImmersive ? 1 : 0)
@@ -36,7 +63,7 @@ struct ActiveSessionView: View {
 
                     if isLandscape {
                         HStack(spacing: 32) {
-                            // 问题5：标题加截断，防止长任务名撑坏布局
+                            // 长任务名限制为两行，避免横屏时挤压计时器和控制栏。
                             VStack(spacing: 10) {
                                 Text(session.phase == .rest ? String(localized: "session.resting") : session.taskTitle)
                                     .font(.title2.weight(.semibold))
@@ -57,7 +84,7 @@ struct ActiveSessionView: View {
                                     .animation(disableClockAnimation ? nil : .smooth, value: status.remaining ?? status.elapsed)
 
                                 if !isImmersive, session.phase == .focus {
-                                    // 问题3：进度条宽度按屏幕比例，不硬编码
+                                    // 横屏进度条随可用宽度收缩，兼容小尺寸设备。
                                     progressView(status: status, session: session)
                                         .frame(width: min(220, geometry.size.width * 0.28))
                                 }
@@ -65,15 +92,15 @@ struct ActiveSessionView: View {
                                 if isImmersive {
                                     Text(String(localized: "session.tapHint"))
                                         .font(.footnote)
-                                        .foregroundStyle(.white.opacity(0.75))
+                                        .foregroundStyle(secondaryForeground)
                                 }
                             }
 
                             if !isImmersive {
-                                // 问题4：控制栏在上，暂停状态在下，与竖屏一致
+                                // 横屏保持控制栏在上、暂停状态在下，与竖屏交互一致。
                                 VStack(spacing: 16) {
                                     if revealControls || !appModel.shouldShowMinimalMode {
-                                        // 问题2：横屏使用较小控件尺寸
+                                        // 横屏使用更紧凑的控件尺寸，避免溢出安全区域。
                                         controlPanel(for: session, isLandscape: true)
                                             .transition(.opacity.combined(with: .move(edge: .trailing)))
                                     }
@@ -84,16 +111,16 @@ struct ActiveSessionView: View {
                                 }
                             }
                         }
-                        // 问题1：横屏垂直方向 padding 缩小，避免高度不够
+                        // 横屏垂直留白更小，避免低高度场景内容被裁切。
                         .padding(.horizontal, 24)
                         .padding(.vertical, isLandscape ? 12 : 24)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryForeground)
                         .animation(.smooth, value: revealControls)
                         .animation(.smooth, value: isImmersive)
                         .transition(.opacity.combined(with: .scale(scale: 1.05)))
                     } else {
                         VStack(spacing: 24) {
-                            // 问题5：竖屏同样加截断保护
+                            // 竖屏同样限制长标题，保持计时器位置稳定。
                             VStack(spacing: 10) {
                                 Text(session.phase == .rest ? String(localized: "session.resting") : session.taskTitle)
                                     .font(.title2.weight(.semibold))
@@ -128,11 +155,11 @@ struct ActiveSessionView: View {
                             if isImmersive {
                                 Text(String(localized: "session.tapHint"))
                                     .font(.footnote)
-                                    .foregroundStyle(.white.opacity(0.75))
+                                    .foregroundStyle(secondaryForeground)
                             }
                         }
                         .padding(24)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryForeground)
                         .animation(.smooth, value: revealControls)
                         .animation(.smooth, value: isImmersive)
                         .transition(.opacity.combined(with: .scale(scale: 1.05)))
@@ -141,7 +168,9 @@ struct ActiveSessionView: View {
                     emptyState(isLandscape: isLandscape)
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
+
             }
+            .onChange(of: isLandscape) { _, newValue in isLandscapeForOverlay = newValue }
         }
         .transition(.opacity)
         .contentShape(Rectangle())
@@ -156,11 +185,14 @@ struct ActiveSessionView: View {
             ScreenAwakeController.updateRefreshRate(isImmersive: isImmersive)
             appModel.setActiveImmersiveChromeHidden(isImmersive)
             disableClockAnimation = isImmersive
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            batteryLevel = UIDevice.current.batteryLevel
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !isImmersive {
                     Button {
+                        timerDisplayDraft = appModel.settings
                         showSettings = true
                     } label: {
                         Image(systemName: "gear")
@@ -171,13 +203,25 @@ struct ActiveSessionView: View {
         }.toolbar(isImmersive ? .hidden : .visible, for: .navigationBar)
         .sheet(isPresented: $showSettings) {
             NavigationStack {
-                SettingsView()
+                TimerDisplaySettingsView(draft: $timerDisplayDraft)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button {
+                                showSettings = false
+                            } label: {
+                                Image(systemName: "xmark")
+                            }
+                        }
+                    }
             }
         }
         .onChange(of: appModel.selectedTab) { _, newTab in
             if newTab != .active {
                 showSettings = false
             }
+        }
+        .onChange(of: timerDisplayDraft) { _, newDraft in
+            appModel.settings = newDraft
         }
         .onChange(of: appModel.shouldShowMinimalMode) { _, enabled in
             if enabled {
@@ -218,13 +262,39 @@ struct ActiveSessionView: View {
             }
         }
 
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
+            currentTime = time
+            if batteryLevel < 0 { batteryLevel = UIDevice.current.batteryLevel }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
+            batteryLevel = UIDevice.current.batteryLevel
+        }
+        .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
+            let maxShift: CGFloat = 3
+            burnInOffset = CGSize(
+                width: CGFloat.random(in: -maxShift...maxShift),
+                height: CGFloat.random(in: -maxShift...maxShift)
+            )
+        }
+
         .onDisappear {
             autoHideTask?.cancel()
             ScreenAwakeController.updateRefreshRate(isImmersive: false)
             appModel.setActiveImmersiveChromeHidden(false)
+            UIDevice.current.isBatteryMonitoringEnabled = false
         }
         .toolbar(isImmersive ? .hidden : .visible, for: .tabBar)
         .statusBarHidden(appModel.shouldShowMinimalMode && !revealControls)
+        .overlay(alignment: .topLeading) {
+            if appModel.settings.showStatusBarOverlay {
+                statusBarContent
+                    .padding(.top, (isLandscapeForOverlay ? 35 : 75) + burnInOffset.height)
+                    .padding(.leading, (isLandscapeForOverlay ? 50 : 20) + burnInOffset.width)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(nil, value: isImmersive)
+            }
+        }
         .alert(String(localized: "session.stop.confirm.title"), isPresented: $showStopConfirm) {
             Button(String(localized: "common.cancel"), role: .cancel) {}
             Button(String(localized: "common.stop"), role: .destructive) {
@@ -251,31 +321,62 @@ struct ActiveSessionView: View {
         }
     }
 
+    // MARK: - 状态栏覆盖层（时间 + 电量）
+
+    private var statusBarContent: some View {
+        HStack(spacing: 5) {
+            Text(currentTime.formatted(.dateTime.hour().minute()))
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+
+            Text(String(localized: "common.separator"))
+                .font(.system(size: 11, weight: .thin))
+
+            if batteryLevel >= 0 {
+                Image(systemName: batteryIcon(for: batteryLevel))
+                    .font(.system(size: 9, weight: .light))
+
+                Text(verbatim: "\(Int(batteryLevel * 100))%")
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+            }
+        }
+        .foregroundStyle(statusBarForeground)
+    }
+
+    private func batteryIcon(for level: Float) -> String {
+        switch level {
+        case ..<0.1: return "battery.0"
+        case ..<0.25: return "battery.25"
+        case ..<0.5: return "battery.50"
+        case ..<0.75: return "battery.75"
+        default: return "battery.100"
+        }
+    }
+
     @ViewBuilder
     private func emptyState(isLandscape: Bool) -> some View {
         if isLandscape {
             HStack(spacing: 24) {
                 Image(systemName: "timer.circle.fill")
                     .font(.system(size: 72))
-                    .foregroundStyle(.white.opacity(0.9))
-                
+                    .foregroundStyle(appModel.settings.showPersonalizedBackground || colorScheme == .dark ? .white : Color.accentColor)
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text(String(localized: "session.noTask"))
                         .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryForeground)
                     Text(String(localized: "session.noTask.subtitle"))
                         .multilineTextAlignment(.leading)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.75))
-                    
+                        .foregroundStyle(secondaryForeground)
+
                     if appModel.quickLaunchTaskID != nil {
                         if let lastTask = appModel.quickLaunchTask {
                             Text(String(format: String(localized: "session.lastTask"), lastTask.title))
-                                .foregroundStyle(.white.opacity(0.75))
+                                .foregroundStyle(secondaryForeground)
                                 .font(.footnote)
                         }
                     }
-                    
+
                     HStack(spacing: 12) {
                         if appModel.quickLaunchTaskID != nil {
                             Button(String(localized: "session.quickStart")) {
@@ -286,7 +387,7 @@ struct ActiveSessionView: View {
                             .buttonStyle(.glass(.regular.tint(.accentColor)))
                             .foregroundStyle(.white)
                         }
-                        
+
                         Button(String(localized: "session.goTasks")) {
                             appModel.openTasksTab()
                         }
@@ -302,18 +403,18 @@ struct ActiveSessionView: View {
             VStack(spacing: 18) {
                 Image(systemName: "timer.circle.fill")
                     .font(.system(size: 96))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(appModel.settings.showPersonalizedBackground || colorScheme == .dark ? .white : Color.accentColor)
                 Text(String(localized: "session.noTask"))
                     .font(.system(size: 42, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(primaryForeground)
                 Text(String(localized: "session.noTask.subtitle"))
                     .multilineTextAlignment(.center)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(secondaryForeground)
                 if appModel.quickLaunchTaskID != nil {
                     if let lastTask = appModel.quickLaunchTask {
                         Text(String(format: String(localized: "session.lastTask"), lastTask.title))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(secondaryForeground)
                             .font(.footnote)
                             .padding(12)
                     }
@@ -346,7 +447,7 @@ struct ActiveSessionView: View {
                 .tint(.white)
         } else {
             Text(String(localized: "session.elapsed"))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(secondaryForeground)
         }
     }
 
@@ -359,10 +460,10 @@ struct ActiveSessionView: View {
                 Text(String(format: String(localized: "session.pause.remaining"), appModel.formattedDuration(remaining)))
                     .font(.footnote)
             }
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(secondaryForeground)
         } else {
             Label(String(localized: "session.pause.status"), systemImage: "pause.circle.fill")
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(secondaryForeground)
         }
     }
 
@@ -393,7 +494,7 @@ struct ActiveSessionView: View {
                 if appModel.settings.advancedDisallowEarlyFinish {
                     Text(String(localized: "settings.earlyFinish.note"))
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(secondaryForeground)
                 }
             } else {
                 Button(String(localized: "session.endRest")) {
@@ -432,6 +533,24 @@ struct ActiveSessionView: View {
             return hasHourPart ? 160 : 200
         } else {
             return hasHourPart ? 92 : 108
+        }
+    }
+}
+
+private struct AppBackgroundLite: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        if colorScheme == .dark {
+            Color(UIColor.secondarySystemBackground)
+                .ignoresSafeArea()
+        } else {
+            LinearGradient(
+                colors: ThemePalette.editorBackgroundColors(for: "sunset", colorScheme: .light),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
         }
     }
 }

@@ -39,21 +39,41 @@ final class AppViewModel: ObservableObject {
     init(forcePreviewMode: Bool = false) {
         let runningForPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
         isPreviewMode = forcePreviewMode || runningForPreview
-        let snapshot = isPreviewMode ? AppSnapshot.default : persistence.load()
-        self.tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
-        self.sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
-        self.countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
-        self.profile = snapshot.profile
-        self.settings = snapshot.settings
-        self.checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
-        self.lastTaskID = snapshot.lastTaskID
-        self.activeSession = snapshot.activeSession
-        self.quickLaunchTaskID = snapshot.lastTaskID
+
+        if isPreviewMode {
+            let snapshot = AppSnapshot.default
+            tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
+            sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+            countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
+            profile = snapshot.profile
+            settings = snapshot.settings
+            checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
+            lastTaskID = snapshot.lastTaskID
+            activeSession = snapshot.activeSession
+            quickLaunchTaskID = snapshot.lastTaskID
+        } else {
+            _ = persistence.migrateIfNeeded()
+
+            let dataStore = persistence.loadData()
+            let storedSettings = persistence.loadSettings()
+
+            tasks = dataStore.tasks.sorted(by: { $0.order < $1.order })
+            sessions = dataStore.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+            countdownEvents = dataStore.countdownEvents.sorted(by: { $0.date < $1.date })
+            profile = dataStore.profile
+            settings = storedSettings
+            checkInDates = Self.normalizedCheckInDates(dataStore.checkInDates ?? [])
+            lastTaskID = dataStore.lastTaskID
+            activeSession = dataStore.activeSession
+            quickLaunchTaskID = dataStore.lastTaskID
+        }
 
         startTicker()
         if !isPreviewMode {
-            wirePersistence()
+            notifications.setup()
+            wirePersistenceAndSideEffects()
             syncReminder()
+            syncCountdownReminders()
         }
         refreshDerivedState()
         reconcileActiveSessionIfNeeded()
@@ -67,6 +87,43 @@ final class AppViewModel: ObservableObject {
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: today) ?? today
         model.checkInDates = normalizedCheckInDates([today, yesterday, twoDaysAgo])
+
+        // 热力图预览：构造最近 7 天不同时长的模拟专注记录
+        let sampleDurations: [TimeInterval] = [
+            0,
+            15 * 60,
+            45 * 60,
+            90 * 60,
+            120 * 60,
+            30 * 60,
+            5 * 60,
+        ]
+        let fallbackTask = TaskItem(title: "Sample", mode: .pomodoro, order: 0)
+        let baseHour: TimeInterval = 9 * 3600
+
+        var previewSessions: [FocusSessionRecord] = []
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let duration = sampleDurations[offset]
+            guard duration > 0 else { continue }
+            let task = model.tasks.first ?? fallbackTask
+            let startTime = day.addingTimeInterval(baseHour)
+            let endTime = startTime.addingTimeInterval(duration)
+            let session = FocusSessionRecord(
+                id: UUID(),
+                taskID: task.id,
+                taskTitle: task.title,
+                mode: task.mode,
+                startedAt: startTime,
+                endedAt: endTime,
+                focusedDuration: duration,
+                wasCompleted: true,
+                wasAbandoned: false
+            )
+            previewSessions.append(session)
+        }
+        model.sessions = previewSessions.sorted(by: { $0.startedAt > $1.startedAt })
+
         return model
     }
 
@@ -161,19 +218,30 @@ final class AppViewModel: ObservableObject {
         tasks = reordered
     }
 
-    func addCountdownEvent(title: String, date: Date) {
-        countdownEvents.append(CountdownEvent(title: title, date: date))
+    func addCountdownEvent(title: String, date: Date, includesTime: Bool = false, notificationEnabled: Bool = false) {
+        let event = CountdownEvent(
+            title: title,
+            date: normalizedCountdownDate(date, includesTime: includesTime),
+            includesTime: includesTime,
+            notificationEnabled: notificationEnabled
+        )
+        countdownEvents.append(event)
         countdownEvents.sort(by: { $0.date < $1.date })
+        syncCountdownReminder(for: event)
     }
 
     func updateCountdownEvent(_ event: CountdownEvent) {
         guard let index = countdownEvents.firstIndex(where: { $0.id == event.id }) else { return }
-        countdownEvents[index] = event
+        var copy = event
+        copy.date = normalizedCountdownDate(copy.date, includesTime: copy.includesTime)
+        countdownEvents[index] = copy
         countdownEvents.sort(by: { $0.date < $1.date })
+        syncCountdownReminder(for: copy)
     }
 
     func deleteCountdownEvent(id: UUID) {
         countdownEvents.removeAll(where: { $0.id == id })
+        notifications.cancelCountdownReminder(eventID: id)
     }
 
     func deleteCountdownEvents(at offsets: IndexSet, from future: Bool) {
@@ -360,6 +428,24 @@ final class AppViewModel: ObservableObject {
         return streak
     }
 
+    var longestCheckInStreak: Int {
+        guard checkInDates.count > 1 else { return checkInDates.count }
+
+        let calendar = Calendar.current
+        let sorted = Set(checkInDates.map { calendar.startOfDay(for: $0) }).sorted()
+        var maxLen = 1
+        var cur = 1
+        for i in 1..<sorted.count {
+            if let diff = calendar.dateComponents([.day], from: sorted[i - 1], to: sorted[i]).day, diff == 1 {
+                cur += 1
+                maxLen = max(maxLen, cur)
+            } else {
+                cur = 1
+            }
+        }
+        return maxLen
+    }
+
     @discardableResult
     func checkInToday() -> Bool {
         let today = Calendar.current.startOfDay(for: .now)
@@ -369,6 +455,30 @@ final class AppViewModel: ObservableObject {
 
         checkInDates = Self.normalizedCheckInDates(checkInDates + [today])
         return true
+    }
+
+    /// 指定月份的每日专注时长聚合，供热力图使用。
+    func dailyFocusDurations(for month: Date) -> [Date: TimeInterval] {
+        let calendar = Calendar.current
+        guard let range = calendar.range(of: .day, in: .month, for: month),
+              let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month))
+        else { return [:] }
+
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        var durations = Dictionary(grouping: sessions.filter { record in
+            record.endedAt >= monthStart && record.endedAt < nextMonthStart
+        }) { record in
+            calendar.startOfDay(for: record.endedAt)
+        }
+            .mapValues { records in
+                records.reduce(0) { $0 + $1.focusedDuration }
+            }
+
+        for day in range {
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { continue }
+            durations[date] = durations[date] ?? 0
+        }
+        return durations
     }
 
     func completedCountToday(for task: TaskItem) -> Int {
@@ -389,22 +499,41 @@ final class AppViewModel: ObservableObject {
 
     func averageDailyDuration() -> TimeInterval {
         guard let earliest = sessions.map(\.startedAt).min() else { return 0 }
-        let dayCount = max(1, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: earliest), to: Calendar.current.startOfDay(for: .now)).day ?? 0)
+        let calendar = Calendar.current
+        let earliestDay = calendar.startOfDay(for: earliest)
+        let today = calendar.startOfDay(for: .now)
+        let elapsedDays = calendar.dateComponents([.day], from: earliestDay, to: today).day ?? 0
+        let dayCount = max(1, elapsedDays + 1)
         return sessions.reduce(0) { $0 + $1.focusedDuration } / Double(dayCount)
     }
 
+    var totalFocusedDurationAllTime: TimeInterval {
+        sessions.reduce(0) { $0 + $1.focusedDuration }
+    }
+
     var futureEvents: [CountdownEvent] {
-        countdownEvents.filter { $0.date >= Calendar.current.startOfDay(for: .now) }
+        countdownEvents.filter { $0.date >= Calendar.current.startOfDay(for: .now) && !Calendar.current.isDateInToday($0.date) }
+    }
+
+    var todayEvents: [CountdownEvent] {
+        countdownEvents.filter { Calendar.current.isDateInToday($0.date) }
     }
 
     var pastEvents: [CountdownEvent] {
-        countdownEvents.filter { $0.date < Calendar.current.startOfDay(for: .now) }.sorted(by: { $0.date > $1.date })
+        countdownEvents.filter { $0.date < Calendar.current.startOfDay(for: .now) && !Calendar.current.isDateInToday($0.date) }.sorted(by: { $0.date > $1.date })
     }
 
     func taskDistribution(range: TimeRange) -> [TaskDistributionEntry] {
-        let grouped = Dictionary(grouping: filteredSessions(range: range), by: \.taskTitle)
+        let grouped = Dictionary(grouping: filteredSessions(range: range)) { record in
+            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        }
         return grouped.map { key, value in
-            TaskDistributionEntry(id: UUID(), taskTitle: key, duration: value.reduce(0) { $0 + $1.focusedDuration }, colorSeed: key)
+            TaskDistributionEntry(
+                id: key,
+                taskTitle: value.first?.taskTitle ?? "",
+                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                colorSeed: key
+            )
         }
         .sorted(by: { $0.duration > $1.duration })
     }
@@ -412,14 +541,20 @@ final class AppViewModel: ObservableObject {
     func monthlyTrendPoints() -> [DayTrendEntry] {
         let calendar = Calendar.current
         let monthStart = statisticsMonthStart(for: selectedStatisticsMonth)
-        let monthEnd = statisticsMonthEnd(for: selectedStatisticsMonth)
-        let dayCount = max(1, calendar.dateComponents([.day], from: monthStart, to: monthEnd).day ?? 0)
+        let dayRange = calendar.range(of: .day, in: .month, for: monthStart) ?? 1..<2
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let durationsByDay = Dictionary(grouping: sessions.filter { record in
+            record.endedAt >= monthStart && record.endedAt < nextMonthStart
+        }) { record in
+            calendar.startOfDay(for: record.endedAt)
+        }
+            .mapValues { records in
+                records.reduce(0) { $0 + $1.focusedDuration }
+            }
 
-        return (0...dayCount).map { dayOffset in
-            let date = calendar.date(byAdding: .day, value: dayOffset, to: monthStart) ?? monthStart
-            let duration = sessions
-                .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
-                .reduce(0) { $0 + $1.focusedDuration }
+        return dayRange.compactMap { day in
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { return nil }
+            let duration = durationsByDay[date] ?? 0
             return DayTrendEntry(date: date, duration: duration)
         }
     }
@@ -445,14 +580,19 @@ final class AppViewModel: ObservableObject {
 
     func cycleStatisticsMonth(forward: Bool) {
         let candidate = Calendar.current.date(byAdding: .month, value: forward ? 1 : -1, to: selectedStatisticsMonth) ?? selectedStatisticsMonth
+        let target: Date
         if forward {
             let currentMonth = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: .now)) ?? .now
-            selectedStatisticsMonth = min(candidate, currentMonth)
+            target = min(candidate, currentMonth)
         } else {
-            selectedStatisticsMonth = candidate
+            target = candidate
         }
-        selectedStatisticsMonth = statisticsMonthStart(for: selectedStatisticsMonth)
-        statisticsTrendScrollDate = defaultStatisticsTrendStartDate(for: selectedStatisticsMonth, anchorDate: selectedStatisticsMonth)
+        let newMonth = statisticsMonthStart(for: target)
+        let newScrollDate = defaultStatisticsTrendStartDate(for: newMonth, anchorDate: newMonth)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedStatisticsMonth = newMonth
+            statisticsTrendScrollDate = newScrollDate
+        }
     }
 
     private func statisticsMonthStart(for date: Date) -> Date {
@@ -557,6 +697,25 @@ final class AppViewModel: ObservableObject {
             isPaused: false,
             pauseDeadline: nil
         )
+    }
+
+    func taskDistribution(on date: Date) -> [TaskDistributionEntry] {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
+        let filtered = sessions.filter { $0.endedAt >= dayStart && $0.endedAt < dayEnd }
+        let grouped = Dictionary(grouping: filtered) { record in
+            record.taskID?.uuidString ?? "title:\(record.taskTitle)"
+        }
+        return grouped.map { key, value in
+            TaskDistributionEntry(
+                id: key,
+                taskTitle: value.first?.taskTitle ?? "",
+                duration: value.reduce(0) { $0 + $1.focusedDuration },
+                colorSeed: key
+            )
+        }
+        .sorted(by: { $0.duration > $1.duration })
     }
 
     private func filteredSessions(range: TimeRange) -> [FocusSessionRecord] {
@@ -687,7 +846,13 @@ final class AppViewModel: ObservableObject {
 
     private func syncLiveActivity() {
         guard settings.liveActivitiesEnabled else {
+            // 关闭时：清本地引用 + 立即结束所有系统活动
+            let ref = timerActivity
+            timerActivity = nil
             Task {
+                if let activity = ref {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
                 for activity in Activity<TimerActivityAttributes>.activities {
                     await activity.end(nil, dismissalPolicy: .immediate)
                 }
@@ -704,22 +869,33 @@ final class AppViewModel: ObservableObject {
             // 秒表正向计时的参考起点 = 现在 - 已计时长（Widget 自动正向计数，无需 App 推送）
             let elapsedReferenceDate = Date.now.addingTimeInterval(-status.elapsed)
 
-            // 暂停时的冻结显示文字（用于 Widget 显示静态快照，不会随时间自动更新）
+            // 暂停时冻结计时器显示值；有时限暂停交给 Widget 按结束时间自动倒计时。
             let pausedTimerText: String
-            if session.isPaused {
+            let pauseEndTime: Date?
+            if session.isPaused, let pauseDeadline = session.pauseDeadline {
+                pausedTimerText = ""
+                pauseEndTime = pauseDeadline
+            } else if session.isPaused {
+                // 无时限暂停：冻结当前时间值
                 if session.mode == .stopwatch {
                     pausedTimerText = formattedDuration(status.elapsed)
                 } else {
                     pausedTimerText = formattedDuration(status.remaining ?? 0)
                 }
+                pauseEndTime = nil
             } else {
                 pausedTimerText = ""
+                pauseEndTime = nil
             }
 
-            // 阶段标签（暂停时覆盖为「已暂停」）
+            // 阶段标签：有时限暂停 vs 无时限暂停 区分显示
             let phaseLabel: String
             if session.isPaused {
-                phaseLabel = String(localized: "la.paused")
+                if session.pauseDeadline != nil {
+                    phaseLabel = String(localized: "la.paused")
+                } else {
+                    phaseLabel = String(localized: "la.paused.indefinite")
+                }
             } else if session.phase == .focus {
                 phaseLabel = String(localized: "la.phase.focus")
             } else {
@@ -730,39 +906,45 @@ final class AppViewModel: ObservableObject {
                 endTime: endTime,
                 elapsedReferenceDate: elapsedReferenceDate,
                 pausedTimerText: pausedTimerText,
+                pauseEndTime: pauseEndTime,
                 taskTitle: session.taskTitle,
                 phaseLabel: phaseLabel,
                 modeLabel: liveActivityModeLabel(for: session.mode),
                 modeSystemImage: liveActivityModeImage(for: session.mode),
                 isPaused: session.isPaused,
-                isStopwatch: session.mode == .stopwatch
+                isRest: session.phase == .rest,
+                isStopwatch: session.mode == .stopwatch && session.phase == .focus
             )
 
             // staleDate：倒计时/番茄钟在结束时间标记为过期；秒表无限期
             let staleDate = endTime
 
-            if let activity = timerActivity {
+            // 尝试更新已有活动；若本地引用已失效则清除，走新建流程
+            if let activity = timerActivity,
+               Activity<TimerActivityAttributes>.activities.contains(where: { $0.id == activity.id }) {
                 Task {
                     await activity.update(ActivityContent(state: state, staleDate: staleDate))
                 }
             } else {
-                // 尝试复用应用重启前遗留的活动实例
-                if let existingActivity = Activity<TimerActivityAttributes>.activities.first {
-                    timerActivity = existingActivity
-                    Task {
-                        await existingActivity.update(ActivityContent(state: state, staleDate: staleDate))
+                // 引用已失效或首次创建：清理残留，新建
+                timerActivity = nil
+                let staleActivities = Activity<TimerActivityAttributes>.activities
+                let attributes = TimerActivityAttributes(taskID: session.taskID)
+
+                Task { @MainActor in
+                    for stale in staleActivities {
+                        await stale.end(nil, dismissalPolicy: .immediate)
                     }
-                } else {
-                    // 启动新活动
-                    let attributes = TimerActivityAttributes(taskID: session.taskID)
+
+                    guard self.timerActivity == nil, self.activeSession != nil else { return }
                     do {
-                        timerActivity = try Activity.request(
+                        self.timerActivity = try Activity.request(
                             attributes: attributes,
                             content: ActivityContent(state: state, staleDate: staleDate),
                             pushType: nil
                         )
                     } catch {
-                        print("Live Activity 启动失败: \(error.localizedDescription)")
+                        print("Live Activity failed to start: \(error.localizedDescription)")
                     }
                 }
             }
@@ -800,10 +982,9 @@ final class AppViewModel: ObservableObject {
 
 
     private func wirePersistence() {
-        // 数据持久化：监听所有状态变化
+        // 用户数据与设置分开持久化，避免设置切换时重复写入会话/任务大文件。
         Publishers.MergeMany(
             $profile.map { _ in () }.eraseToAnyPublisher(),
-            $settings.map { _ in () }.eraseToAnyPublisher(),
             $activeSession.map { _ in () }.eraseToAnyPublisher(),
             $countdownEvents.map { _ in () }.eraseToAnyPublisher(),
             $tasks.map { _ in () }.eraseToAnyPublisher(),
@@ -812,10 +993,61 @@ final class AppViewModel: ObservableObject {
             $lastTaskID.map { _ in () }.eraseToAnyPublisher()
         )
         .sink { [weak self] _ in
-            self?.persistState()
+            self?.persistDataState()
         }
         .store(in: &cancellables)
 
+        $settings
+            .sink { [weak self] newSettings in
+                self?.persistSettingsState(newSettings)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func currentDataStore() -> DataStore {
+        DataStore(
+            version: StorageSchemaVersion.current,
+            tasks: tasks,
+            sessions: sessions,
+            countdownEvents: countdownEvents,
+            profile: profile,
+            checkInDates: checkInDates,
+            lastTaskID: lastTaskID,
+            activeSession: activeSession
+        )
+    }
+
+    private func currentSettingsStore(settings settingsValue: AppSettings? = nil) -> SettingsStore {
+        SettingsStore(
+            version: StorageSchemaVersion.current,
+            settings: settingsValue ?? settings
+        )
+    }
+
+    private func persistDataState() {
+        guard !isPreviewMode else { return }
+
+        persistence.save(data: currentDataStore())
+        refreshDerivedState()
+    }
+
+    private func persistSettingsState(_ newSettings: AppSettings) {
+        guard !isPreviewMode else { return }
+
+        // @Published 在 willSet 发出新值；这里必须保存 publisher 传入的新设置，避免杀进程时写回旧值。
+        persistence.save(settings: currentSettingsStore(settings: newSettings))
+        refreshDerivedState()
+    }
+
+    private func persistState() {
+        guard !isPreviewMode else { return }
+
+        persistence.save(data: currentDataStore())
+        persistence.save(settings: currentSettingsStore())
+        refreshDerivedState()
+    }
+
+    private func wireSideEffects() {
         // 提醒同步：仅在提醒相关设置改变时重新调度
         $settings
             .dropFirst()
@@ -842,22 +1074,9 @@ final class AppViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func persistState() {
-        guard !isPreviewMode else { return }
-
-        let snapshot = AppSnapshot(
-            tasks: tasks,
-            sessions: sessions,
-            countdownEvents: countdownEvents,
-            profile: profile,
-            settings: settings,
-            checkInDates: checkInDates,
-            lastTaskID: lastTaskID,
-            activeSession: activeSession
-        )
-        persistence.save(snapshot)
-        // 通知调度由专用订阅者负责，不在 persistState 中处理
-        refreshDerivedState()
+    private func wirePersistenceAndSideEffects() {
+        wirePersistence()
+        wireSideEffects()
     }
 
     /// 同步每日提醒状态：今天已专注则取消，否则按设置调度
@@ -879,6 +1098,39 @@ final class AppViewModel: ObservableObject {
     /// 今天是否已有合格的专注记录（≥5s，recordSession 才会写入）
     private func hasFocusedToday() -> Bool {
         sessions.contains { Calendar.current.isDateInToday($0.endedAt) }
+    }
+
+    private func syncCountdownReminders() {
+        let events = countdownEvents
+        notifications.cancelAllCountdownReminders { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                events.forEach(self.syncCountdownReminder)
+            }
+        }
+    }
+
+    private func syncCountdownReminder(for event: CountdownEvent) {
+        guard !isPreviewMode else { return }
+        guard event.notificationEnabled else {
+            notifications.cancelCountdownReminder(eventID: event.id)
+            return
+        }
+
+        let reminderDate = normalizedCountdownDate(event.date, includesTime: event.includesTime)
+        guard reminderDate > Date.now else {
+            notifications.cancelCountdownReminder(eventID: event.id)
+            return
+        }
+        notifications.scheduleCountdownReminderIfAuthorized(
+            eventID: event.id,
+            title: event.title,
+            date: reminderDate
+        )
+    }
+
+    private func normalizedCountdownDate(_ date: Date, includesTime: Bool) -> Date {
+        includesTime ? date : Calendar.current.startOfDay(for: date)
     }
 
     private func showNotice(_ message: String) {
@@ -912,8 +1164,7 @@ final class AppViewModel: ObservableObject {
         guard !isPreviewMode else { return }
 
         // Reset to default state
-        let defaultSnapshot = AppSnapshot.default
-        tasks = defaultSnapshot.tasks
+        tasks = []
         sessions = []
         countdownEvents = []
         profile = ProfileInfo.default
@@ -924,66 +1175,105 @@ final class AppViewModel: ObservableObject {
         activeSession = nil
         selectedTab = .active
 
-        // Clear persisted data
-        persistence.save(defaultSnapshot)
+        // 清除持久化数据
+        let dataStore = DataStore(
+            version: StorageSchemaVersion.current,
+            tasks: [],
+            sessions: [],
+            countdownEvents: [],
+            profile: ProfileInfo.default,
+            checkInDates: [],
+            lastTaskID: nil,
+            activeSession: nil
+        )
+        persistence.save(data: dataStore)
+        persistence.save(settings: currentSettingsStore())
         notifications.cancelDailyReminder()
         refreshDerivedState(shouldSyncActivity: true)
         showNotice(String(localized: "settings.clearData.success"))
     }
 
     // MARK: - 数据导入导出
-    
-    /// 导出数据为 JSON 文件
+
+    /// 导出数据为含版本号的 JSON 文件
     func exportData() -> Data? {
         guard !isPreviewMode else { return nil }
-        
-        let snapshot = AppSnapshot(
+
+        let dataStore = DataStore(
+            version: StorageSchemaVersion.current,
             tasks: tasks,
             sessions: sessions,
             countdownEvents: countdownEvents,
             profile: profile,
-            settings: settings,
             checkInDates: checkInDates,
             lastTaskID: lastTaskID,
             activeSession: activeSession
         )
-        
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = .prettyPrinted
-        
-        return try? encoder.encode(snapshot)
+        return persistence.exportData(data: dataStore, settings: settings)
     }
-    
-    /// 导入数据从 JSON 文件
-    func importData(from data: Data) -> Bool {
-        guard !isPreviewMode else { return false }
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        guard let snapshot = try? decoder.decode(AppSnapshot.self, from: data) else {
-            return false
+
+    /// 预检导入文件，供 UI 展示版本提示；返回值可直接传给 importData(_:)。
+    func inspectImport(data: Data) -> PersistenceService.ImportResult? {
+        persistence.inspectImport(data: data)
+    }
+
+    /// 从原始 JSON 数据导入；适合外部调用，内部会先完成一次预检解析。
+    func importData(from data: Data) -> ImportStatus {
+        guard !isPreviewMode else { return .failed }
+
+        guard let result = inspectImport(data: data) else {
+            return .failed
         }
-        
+        return importData(result)
+    }
+
+    /// 使用已预检解析的结果导入，避免确认弹窗后再次解码同一份文件。
+    func importData(_ result: PersistenceService.ImportResult) -> ImportStatus {
+        guard !isPreviewMode else { return .failed }
+
         // 应用导入的数据
-        tasks = snapshot.tasks.sorted(by: { $0.order < $1.order })
-        sessions = snapshot.sessions.sorted(by: { $0.startedAt > $1.startedAt })
-        countdownEvents = snapshot.countdownEvents.sorted(by: { $0.date < $1.date })
-        profile = snapshot.profile
-        settings = snapshot.settings
-        checkInDates = Self.normalizedCheckInDates(snapshot.checkInDates ?? [])
-        lastTaskID = snapshot.lastTaskID
-        quickLaunchTaskID = snapshot.lastTaskID
-        activeSession = snapshot.activeSession
-        
+        tasks = result.tasks.sorted(by: { $0.order < $1.order })
+        sessions = result.sessions.sorted(by: { $0.startedAt > $1.startedAt })
+        countdownEvents = result.countdownEvents.sorted(by: { $0.date < $1.date })
+        profile = result.profile
+        settings = result.settings
+        checkInDates = Self.normalizedCheckInDates(result.checkInDates ?? [])
+        lastTaskID = result.lastTaskID
+        quickLaunchTaskID = result.lastTaskID
+        activeSession = nil // 导入时不恢复进行中的计时
+
         // 持久化数据
-        persistence.save(snapshot)
+        let dataStore = DataStore(
+            version: StorageSchemaVersion.current,
+            tasks: tasks,
+            sessions: sessions,
+            countdownEvents: countdownEvents,
+            profile: profile,
+            checkInDates: checkInDates,
+            lastTaskID: lastTaskID,
+            activeSession: activeSession
+        )
+        persistence.save(data: dataStore)
+        persistence.save(settings: currentSettingsStore())
+
         refreshDerivedState(shouldSyncActivity: true)
         syncReminder()
-        
-        showNotice(String(localized: "settings.importData.success"))
-        return true
+
+        return ImportStatus.success(
+            fileVersion: result.fileVersion,
+            isLegacy: result.isLegacy,
+            isSignatureMismatch: result.isSignatureMismatch
+        )
+    }
+
+    enum ImportStatus {
+        case success(fileVersion: Int, isLegacy: Bool, isSignatureMismatch: Bool)
+        case failed
+
+        var isSuccess: Bool {
+            if case .success = self { return true }
+            return false
+        }
     }
 }
 

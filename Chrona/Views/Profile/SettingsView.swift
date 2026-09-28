@@ -8,9 +8,12 @@ struct SettingsView: View {
     @State private var draft = AppSettings.default
     @State private var showClearDataConfirm = false
     @State private var showClearDataFinal = false
-    @State private var importedData: Data? = nil
+    @State private var pendingImportResult: PersistenceService.ImportResult?
     @State private var showImportPicker = false
     @State private var showImportConfirm = false
+    @State private var importIsLegacy = false
+    @State private var importFileVersion = 0
+    @State private var importSignatureMismatch = false
 
     private var isRuntimeLocked: Bool {
         appModel.activeSession != nil
@@ -22,119 +25,74 @@ struct SettingsView: View {
                 NavigationLink {
                     StrictModeSettingsView(draft: $draft)
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.strictMode"))
-                        Text(String(localized: "settings.strictMode.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.strictMode"),
+                        subtitle: String(localized: "settings.strictMode.subtitle")
+                    )
                 }
 
                 Toggle(isOn: pauseLimitEnabledBinding) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.enablePauseLimit"))
-                        Text(String(localized: "settings.enablePauseLimit.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.enablePauseLimit"),
+                        subtitle: String(localized: "settings.enablePauseLimit.subtitle")
+                    )
                 }
 
                 if draft.stopwatchPauseLimitMinutes != nil {
                     HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "settings.pauseLimit"))
-                            Text(String(localized: "settings.pauseLimit.subtitle"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        SettingRowLabel(
+                            title: String(localized: "settings.pauseLimit"),
+                            subtitle: String(localized: "settings.pauseLimit.subtitle")
+                        )
                         Spacer()
-                        HStack(spacing: 4) {
-                            TextField("1-30", value: pauseLimitMinutesBinding, format: .number)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .lineLimit(1)
-                                .frame(width: 56)
-                                .foregroundStyle(.secondary)
-                            Text(String(localized: "settings.minutesUnit"))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("\(draft.stopwatchPauseLimitMinutes ?? 15)\(String(localized: "settings.minutesUnit"))")
+                            .foregroundStyle(.secondary)
+                        Stepper("", value: Binding(
+                            get: { draft.stopwatchPauseLimitMinutes ?? 15 },
+                            set: { draft.stopwatchPauseLimitMinutes = $0 }
+                        ), in: 1...30)
+                        .labelsHidden()
                     }
                 }
 
                 Toggle(isOn: restAfterTaskBinding) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.restAfterTask"))
-                        Text(String(localized: "settings.restAfterTask.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.restAfterTask"),
+                        subtitle: String(localized: "settings.restAfterTask.subtitle")
+                    )
                 }
 
                 if draft.restDurationMinutes > 0 {
                     HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "settings.restTime"))
-                            Text(String(localized: "settings.restTime.subtitle"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        SettingRowLabel(
+                            title: String(localized: "settings.restTime"),
+                            subtitle: String(localized: "settings.restTime.subtitle")
+                        )
                         Spacer()
-                        HStack(spacing: 4) {
-                            TextField("1-30", value: restDurationMinutesBinding, format: .number)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .lineLimit(1)
-                                .frame(width: 56)
-                                .foregroundStyle(.secondary)
-                            Text(String(localized: "settings.minutesUnit"))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("\(draft.restDurationMinutes)\(String(localized: "settings.minutesUnit"))")
+                            .foregroundStyle(.secondary)
+                        Stepper("", value: $draft.restDurationMinutes, in: 1...30)
+                            .labelsHidden()
                     }
                 }
             } header: {
-                Text(String(localized: "settings.category.focusBehavior"))
+                Text(String(localized: "settings.category.focusBehavior"))  
             } footer: {
                 if isRuntimeLocked {
-                    Text(String(localized: "settings.runtime.locked"))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    Text(String(localized: "settings.runtime.locked"))  
                 }
             }
             .disabled(isRuntimeLocked)
 
             Section(String(localized: "settings.category.appearance")) {
 
-                Toggle(isOn: $draft.enableMinimalBlackMode) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.immersive"))
-                        Text(immersiveSubtitle)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if draft.enableMinimalBlackMode {
-                    Picker(selection: $draft.minimalModeActivationDelaySeconds) {
-                        Text(String(localized: "settings.minimalDelay.5s")).tag(5)
-                            .foregroundStyle(.secondary)
-                        Text(String(localized: "settings.minimalDelay.10s")).tag(10)
-                            .foregroundStyle(.secondary)
-                        Text(String(localized: "settings.minimalDelay.30s")).tag(30)
-                            .foregroundStyle(.secondary)
-                        Text(String(localized: "settings.minimalDelay.60s")).tag(60)
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Text(String(localized: "settings.minimalDelay"))
-                    }
-                }
-
-                Toggle(isOn: $draft.keepScreenAwake) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.keepAwake"))
-                        Text(String(localized: "settings.keepAwake.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                NavigationLink {
+                    TimerDisplaySettingsView(draft: $draft)
+                } label: {
+                    SettingRowLabel(
+                        title: String(localized: "settings.timerDisplay"),
+                        subtitle: String(localized: "settings.timerDisplay.subtitle")
+                    )
                 }
 
                 Toggle(isOn: fixedSortBinding) {
@@ -159,7 +117,12 @@ struct SettingsView: View {
             }
 
             Section(String(localized: "settings.category.notification")) {
-                Toggle(String(localized: "settings.dailyReminder"), isOn: $draft.dailyReminderEnabled)
+                Toggle(isOn: $draft.dailyReminderEnabled) {
+                    SettingRowLabel(
+                        title: String(localized: "settings.dailyReminder"),
+                        subtitle: String(localized: "settings.dailyReminder.subtitle")
+                    )
+                }
                 if draft.dailyReminderEnabled {
                     DatePicker(
                         String(localized: "settings.reminderTime"),
@@ -168,12 +131,10 @@ struct SettingsView: View {
                     )
                 }
                 Toggle(isOn: $draft.liveActivitiesEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.liveActivities"))
-                        Text(String(localized: "settings.liveActivities.subtitle"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingRowLabel(
+                        title: String(localized: "settings.liveActivities"),
+                        subtitle: String(localized: "settings.liveActivities.subtitle")
+                    )
                 }
             }
 
@@ -244,15 +205,15 @@ struct SettingsView: View {
         } message: {
             Text(String(localized: "settings.clearData.final.message"))
         }
-        .alert(String(localized: "settings.importData.confirm.title"), isPresented: $showImportConfirm) {
+        .alert(importConfirmTitle, isPresented: $showImportConfirm) {
             Button(String(localized: "common.cancel"), role: .cancel) {
-                importedData = nil
+                pendingImportResult = nil
             }
-            Button(String(localized: "settings.importData"), role: .destructive) {
+            Button(String(localized: "settings.importData.force"), role: .destructive) {
                 performImport()
             }
         } message: {
-            Text(String(localized: "settings.importData.confirm.message"))
+            Text(importConfirmMessage)
         }
         .fileImporter(
             isPresented: $showImportPicker,
@@ -263,11 +224,28 @@ struct SettingsView: View {
         }
     }
 
-    private var immersiveSubtitle: String {
-        if draft.enableMinimalBlackMode {
-            return String(format: String(localized: "settings.immersive.subtitle.on"), draft.minimalModeActivationDelaySeconds)
+    private var importConfirmTitle: String {
+        if importSignatureMismatch {
+            return String(localized: "settings.importData.confirm.title.modified")
+        } else if importIsLegacy {
+            return String(localized: "settings.importData.confirm.title.legacy")
+        } else if importFileVersion > ExportFormatVersion.current {
+            return String(localized: "settings.importData.confirm.title.newer")
+        } else {
+            return String(localized: "settings.importData.confirm.title")
         }
-        return String(localized: "settings.immersive.subtitle.off")
+    }
+
+    private var importConfirmMessage: String {
+        if importSignatureMismatch {
+            return String(localized: "settings.importData.confirm.message.modified")
+        } else if importIsLegacy {
+            return String(localized: "settings.importData.confirm.message.legacy")
+        } else if importFileVersion > ExportFormatVersion.current {
+            return String(format: String(localized: "settings.importData.confirm.message.newer"), importFileVersion, ExportFormatVersion.current)
+        } else {
+            return String(localized: "settings.importData.confirm.message")
+        }
     }
 
     private var fixedSortBinding: Binding<Bool> {
@@ -292,14 +270,6 @@ struct SettingsView: View {
         }
     }
 
-    private var pauseLimitMinutesBinding: Binding<Int> {
-        Binding {
-            min(max(draft.stopwatchPauseLimitMinutes ?? 15, 1), 30)
-        } set: { minutes in
-            draft.stopwatchPauseLimitMinutes = min(max(minutes, 1), 30)
-        }
-    }
-
     private var restAfterTaskBinding: Binding<Bool> {
         Binding {
             draft.restDurationMinutes > 0
@@ -311,14 +281,6 @@ struct SettingsView: View {
             } else {
                 draft.restDurationMinutes = 0
             }
-        }
-    }
-
-    private var restDurationMinutesBinding: Binding<Int> {
-        Binding {
-            min(max(draft.restDurationMinutes, 1), 30)
-        } set: { minutes in
-            draft.restDurationMinutes = min(max(minutes, 1), 30)
         }
     }
 
@@ -379,25 +341,33 @@ struct SettingsView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            
-            // 重要：必须开启安全资源访问，否则读取 Data 时会权限拒绝
+
             guard url.startAccessingSecurityScopedResource() else {
                 appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
                 return
             }
-            
+
             defer { url.stopAccessingSecurityScopedResource() }
-            
+
             do {
                 let data = try Data(contentsOf: url)
-                self.importedData = data
-                // 读取成功后，显示二次确认弹窗
-                self.showImportConfirm = true
+
+                guard let importResult = appModel.inspectImport(data: data) else {
+                    appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
+                    return
+                }
+
+                // 预检结果会在确认后直接复用，避免重复解码同一份备份文件。
+                pendingImportResult = importResult
+                importFileVersion = importResult.fileVersion
+                importIsLegacy = importResult.isLegacy
+                importSignatureMismatch = importResult.isSignatureMismatch
+                showImportConfirm = true
             } catch {
                 print("Import read failed: \(error)")
                 appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
             }
-            
+
         case .failure(let error):
             print("Import picker failed: \(error)")
         }
@@ -405,17 +375,28 @@ struct SettingsView: View {
 
     /// 执行最终的导入操作
     private func performImport() {
-        guard let data = importedData else { return }
-        
-        if appModel.importData(from: data) {
-            // 导入成功后，同步刷新 UI 草稿状态
-            draft = appModel.settings
-        } else {
+        guard let importResult = pendingImportResult else { return }
+        defer { pendingImportResult = nil }
+
+        let status = appModel.importData(importResult)
+        guard case .success(let fileVersion, let isLegacy, let isSignatureMismatch) = status else {
             appModel.showGlobalNotice(String(localized: "settings.importData.failed"))
+            return
         }
-        
-        // 清理临时状态
-        importedData = nil
+
+        // 导入成功后同步刷新 UI 草稿状态
+        draft = appModel.settings
+
+        // 版本提示
+        if isSignatureMismatch {
+            appModel.showGlobalNotice(String(localized: "settings.importData.modifiedNotice"))
+        } else if isLegacy {
+            appModel.showGlobalNotice(String(localized: "settings.importData.legacyNotice"))
+        } else if fileVersion > ExportFormatVersion.current {
+            appModel.showGlobalNotice(String(localized: "settings.importData.newerWarning"))
+        } else {
+            appModel.showGlobalNotice(String(localized: "settings.importData.success"))
+        }
     }
 }
 
@@ -438,7 +419,7 @@ private struct StrictModeSettingsView: View {
     }
 }
 
-private struct SettingRowLabel: View {
+struct SettingRowLabel: View {
     let title: String
     let subtitle: String?
 
@@ -447,7 +428,7 @@ private struct SettingRowLabel: View {
             Text(title)
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
