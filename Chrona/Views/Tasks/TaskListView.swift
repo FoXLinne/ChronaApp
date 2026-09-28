@@ -3,6 +3,8 @@ import SwiftUI
 struct TaskListView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appModel: AppViewModel
+    @State private var editMode: EditMode = .inactive
+
     @State private var editorRoute: TaskEditorRoute?
     @State private var pendingDeletion: TaskItem?
     @State private var searchText = ""
@@ -14,45 +16,58 @@ struct TaskListView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(displayTasks) { task in
+                if editMode == .active {
+                    // 编辑模式：单一 Section，支持拖拽排序和左侧红点删除
                     Section {
-                        TaskRow(task: task) {
-                            _ = appModel.startTask(task)
-                        }
-                        .contextMenu {
-                            Button(String(localized: "common.edit")) {
-                                guardTaskMutation {
-                                    editorRoute = .edit(task)
-                                }
-                            }
-                            Button(String(localized: "task.start")) {
+                        ForEach(listTasks) { task in
+                            TaskRow(task: task, isEditing: true) {
                                 _ = appModel.startTask(task)
                             }
-                            Button(String(localized: "common.delete"), role: .destructive) {
-                                guardTaskMutation {
-                                    pendingDeletion = task
+                        }
+                        .onDelete(perform: handleDelete)
+                        .onMove(perform: handleMove)
+                    }
+                } else {
+                    // 普通模式：每个任务是独立的 Section 卡片
+                    ForEach(listTasks) { task in
+                        Section {
+                            TaskRow(task: task) {
+                                _ = appModel.startTask(task)
+                            }
+                            .contextMenu {
+                                Button(String(localized: "common.edit")) {
+                                    guardTaskMutation {
+                                        editorRoute = .edit(task)
+                                    }
+                                }
+                                Button(String(localized: "task.start")) {
+                                    _ = appModel.startTask(task)
+                                }
+                                Button(String(localized: "common.delete"), role: .destructive) {
+                                    guardTaskMutation {
+                                        pendingDeletion = task
+                                    }
                                 }
                             }
-                        }
-                        .swipeActions(edge: .trailing) {
-                            if !isTaskMutationLocked {
-                                Button(role: .destructive) {
-                                    pendingDeletion = task
-                                } label: {
-                                    Label(String(localized: "common.delete"), systemImage: "trash")
-                                }
+                            .swipeActions(edge: .trailing) {
+                                if !isTaskMutationLocked {
+                                    Button(role: .destructive) {
+                                        pendingDeletion = task
+                                    } label: {
+                                        Label(String(localized: "common.delete"), systemImage: "trash")
+                                    }
 
-                                Button {
-                                    editorRoute = .edit(task)
-                                } label: {
-                                    Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
+                                    Button {
+                                        editorRoute = .edit(task)
+                                    } label: {
+                                        Label(String(localized: "common.edit"), systemImage: "square.and.pencil")
+                                    }
+                                    .tint(.accentColor)
                                 }
-                                .tint(.accentColor)
                             }
                         }
                     }
                 }
-                .onDelete(perform: handleDelete)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
@@ -61,6 +76,7 @@ struct TaskListView: View {
                     PageBackground(seed: "mint")
                 }
             }
+            .environment(\.editMode, $editMode)
             .listSectionSpacing(taskSectionSpacing)
             .navigationTitle(String(localized: "tab.tasks"))
             .searchable(
@@ -70,25 +86,60 @@ struct TaskListView: View {
             )
             .searchToolbarBehavior(.minimize)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Menu {
-                        ForEach(FocusMode.allCases) { mode in
-                            Toggle(isOn: binding(for: mode)) {
-                                Text(modeTitle(mode))
+                // 编辑模式：右上角只显示「完成」按钮，方便一键退出
+                if editMode == .active {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation {
+                                editMode = .inactive
                             }
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.white)
                         }
-                    } label: {
-                        Label(String(localized: "task.filter"), systemImage: "line.3.horizontal.decrease.circle")
+                        .buttonStyle(.borderedProminent)
+                        // .buttonBorderShape(.circle)
+                        // .tint(.accentColor)
                     }
+                } else {
+                    // 普通模式：ellipsis 菜单 + 快捷添加按钮
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                // 计时进行时禁止进入编辑模式
+                                guard !isTaskMutationLocked else {
+                                    appModel.showGlobalNotice(String(localized: "task.lockedWhileRunning"))
+                                    return
+                                }
+                                withAnimation {
+                                    editMode = .active
+                                }
+                            } label: {
+                                Label(String(localized: "common.edit"), systemImage: "pencil")
+                            }
 
-                    Button {
-                        guardTaskMutation {
-                            editorRoute = .add()
+                            Menu {
+                                ForEach(FocusMode.allCases) { mode in
+                                    Toggle(isOn: binding(for: mode)) {
+                                        Text(modeTitle(mode))
+                                    }
+                                }
+                            } label: {
+                                Label(String(localized: "task.filter"), systemImage: "line.3.horizontal.decrease.circle")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
                         }
-                    } label: {
-                        Image(systemName: "plus")
+
+                        Button {
+                            guardTaskMutation {
+                                editorRoute = .add()
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel(String(localized: "task.new"))
                     }
-                    .accessibilityLabel(String(localized: "task.new"))
                 }
             }
             .sheet(item: $editorRoute) { route in
@@ -128,6 +179,11 @@ struct TaskListView: View {
         appModel.activeSession != nil
     }
 
+    // 编辑模式下显示完整任务列表，避免过滤导致索引错位崩溃
+    private var listTasks: [TaskItem] {
+        editMode == .active ? appModel.sortedTasks : displayTasks
+    }
+
     private var displayTasks: [TaskItem] {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return appModel.sortedTasks.filter { task in
@@ -138,11 +194,16 @@ struct TaskListView: View {
         }
     }
 
+    // 拖拽排序：始终操作完整列表，确保 index 正确映射
+    private func handleMove(from source: IndexSet, to destination: Int) {
+        appModel.moveTasks(from: source, to: destination)
+    }
+
     private func handleDelete(_ offsets: IndexSet) {
         guardTaskMutation {
             for index in offsets {
-                guard displayTasks.indices.contains(index) else { continue }
-                appModel.deleteTask(id: displayTasks[index].id)
+                guard listTasks.indices.contains(index) else { continue }
+                appModel.deleteTask(id: listTasks[index].id)
             }
         }
     }
@@ -209,7 +270,14 @@ private struct TaskEditorRoute: Identifiable {
 private struct TaskRow: View {
     @EnvironmentObject private var appModel: AppViewModel
     let task: TaskItem
+    let isEditing: Bool
     let onStart: () -> Void
+
+    init(task: TaskItem, isEditing: Bool = false, onStart: @escaping () -> Void) {
+        self.task = task
+        self.isEditing = isEditing
+        self.onStart = onStart
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -241,21 +309,23 @@ private struct TaskRow: View {
 
             Spacer()
 
-            ZStack(alignment: .bottomTrailing) {
-                Button(action: onStart) {
-                    Text(controlTitle)
-                        .font(.headline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .foregroundStyle(.white)
-                }
-                .buttonStyle(.glass(.regular.tint(controlTint)))
-                if completedCount > 0 {
-                    Text("\(completedCount)")
-                        .font(.caption2.bold())
-                        .padding(6)
-                        .background(.thinMaterial, in: Circle())
-                        .offset(x: 10, y: 10)
+            if !isEditing {
+                ZStack(alignment: .bottomTrailing) {
+                    Button(action: onStart) {
+                        Text(controlTitle)
+                            .font(.headline.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.glass(.regular.tint(controlTint)))
+                    if completedCount > 0 {
+                        Text("\(completedCount)")
+                            .font(.caption2.bold())
+                            .padding(6)
+                            .background(.thinMaterial, in: Circle())
+                            .offset(x: 10, y: 10)
+                    }
                 }
             }
         }

@@ -50,7 +50,7 @@ final class AppViewModel: ObservableObject {
         startTicker()
         if !isPreviewMode {
             wirePersistence()
-            restoreReminder()
+            syncReminder()
         }
         refreshDerivedState()
         reconcileActiveSessionIfNeeded()
@@ -673,6 +673,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func wirePersistence() {
+        // 数据持久化：监听所有状态变化
         Publishers.MergeMany(
             $profile.map { _ in () }.eraseToAnyPublisher(),
             $settings.map { _ in () }.eraseToAnyPublisher(),
@@ -683,17 +684,28 @@ final class AppViewModel: ObservableObject {
             $checkInDates.map { _ in () }.eraseToAnyPublisher(),
             $lastTaskID.map { _ in () }.eraseToAnyPublisher()
         )
-            .sink { [weak self] _ in
-                self?.persistState()
-            }
-            .store(in: &cancellables)
-    }
-
-    private func restoreReminder() {
-        if settings.dailyReminderEnabled {
-            notifications.requestAuthorization()
-            notifications.scheduleDailyReminder(hour: settings.dailyReminderHour, minute: settings.dailyReminderMinute)
+        .sink { [weak self] _ in
+            self?.persistState()
         }
+        .store(in: &cancellables)
+
+        // 提醒同步：仅在提醒相关设置改变时重新调度
+        $settings
+            .dropFirst()
+            .filter { [weak self] newSettings in
+                guard let self else { return false }
+                return newSettings.dailyReminderEnabled != self.settings.dailyReminderEnabled
+                    || newSettings.dailyReminderHour != self.settings.dailyReminderHour
+                    || newSettings.dailyReminderMinute != self.settings.dailyReminderMinute
+            }
+            .sink { [weak self] _ in self?.syncReminder() }
+            .store(in: &cancellables)
+
+        // 提醒同步：当天完成专注后自动取消当天提醒
+        $sessions
+            .dropFirst()
+            .sink { [weak self] _ in self?.syncReminder() }
+            .store(in: &cancellables)
     }
 
     private func persistState() {
@@ -710,13 +722,29 @@ final class AppViewModel: ObservableObject {
             activeSession: activeSession
         )
         persistence.save(snapshot)
-        if settings.dailyReminderEnabled {
-            notifications.requestAuthorization()
-            notifications.scheduleDailyReminder(hour: settings.dailyReminderHour, minute: settings.dailyReminderMinute)
-        } else {
-            notifications.cancelDailyReminder()
-        }
+        // 通知调度由专用订阅者负责，不在 persistState 中处理
         refreshDerivedState()
+    }
+
+    /// 同步每日提醒状态：今天已专注则取消，否则按设置调度
+    private func syncReminder() {
+        guard settings.dailyReminderEnabled else {
+            notifications.cancelDailyReminder()
+            return
+        }
+        if hasFocusedToday() {
+            notifications.cancelDailyReminder()
+        } else {
+            notifications.scheduleIfAuthorized(
+                hour: settings.dailyReminderHour,
+                minute: settings.dailyReminderMinute
+            )
+        }
+    }
+
+    /// 今天是否已有合格的专注记录（≥5s，recordSession 才会写入）
+    private func hasFocusedToday() -> Bool {
+        sessions.contains { Calendar.current.isDateInToday($0.endedAt) }
     }
 
     private func showNotice(_ message: String) {

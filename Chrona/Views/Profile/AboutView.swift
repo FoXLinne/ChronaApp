@@ -131,19 +131,19 @@ struct AboutView: View {
             // 支持的本地化语言列表
             Section {
                 HStack {
-                    Text("English (US)")
+                    Text("中文（简体）")
                         .fontWeight(.semibold)
                     Spacer()
                     Text(String(localized: "about.localization.builtin"))
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
                 }
-
+                
                 HStack {
-                    Text("中文（简体）")
+                    Text("English (US)")
                         .fontWeight(.semibold)
                     Spacer()
-                    Text(String(localized: "about.localization.builtin"))
+                    Text(String(localized: "about.localization.ai"))
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
                 }
@@ -152,7 +152,7 @@ struct AboutView: View {
                     Text("中文（繁體）")
                         .fontWeight(.semibold)
                     Spacer()
-                    Text(String("@GPT-5.3-Codex"))
+                    Text(String(localized: "about.localization.ai"))
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
                 }
@@ -161,7 +161,7 @@ struct AboutView: View {
                     Text("日本語")
                         .fontWeight(.semibold)
                     Spacer()
-                    Text(String("@Sen"))
+                    Text(String(localized: "about.localization.ai"))
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
                 }

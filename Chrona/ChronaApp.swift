@@ -6,11 +6,17 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 struct ChronaApp: App {
     @StateObject private var appModel = AppViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(ChronaAppDelegate.self) private var appDelegate
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -23,5 +29,3 @@ struct ChronaApp: App {
         }
     }
 }
-
-

@@ -95,8 +95,8 @@ struct TaskEditorView: View {
                             .foregroundStyle(.white)
                     }
                     .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .tint(.accentColor)
+                    // .buttonBorderShape(.circle)
+                    // .tint(.accentColor)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }

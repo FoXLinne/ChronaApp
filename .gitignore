@@ -32,3 +32,6 @@ Pods/
 *.tmp
 *.log
 .github/
+
+# TRAE
+.trae/

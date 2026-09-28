@@ -1,4 +1,25 @@
-# Chrona
+<p align="center">
+  <img src="Chrona/Resources/icons/appicon-iOS-Default-1024x1024@1x.png" width="128" alt="Chrona App Icon">
+</p>
+
+<h1 align="center">Chrona</h1>
+
+<p align="center">
+  <a href="https://github.com/FoXLinne/ChronaApp/releases">
+    <img src="https://img.shields.io/github/v/release/FoXLinne/ChronaApp?style=flat-square" alt="Latest Release">
+  </a>
+  <a href="https://github.com/FoXLinne/ChronaApp/stargazers">
+    <img src="https://img.shields.io/github/stars/FoXLinne/ChronaApp?style=flat-square" alt="Stars">
+  </a>
+  <a href="https://github.com/FoXLinne/ChronaApp/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/FoXLinne/ChronaApp?style=flat-square" alt="License">
+  </a>
+  <a href="https://github.com/FoXLinne/ChronaApp/issues">
+    <img src="https://img.shields.io/github/issues/FoXLinne/ChronaApp?style=flat-square" alt="Issues">
+  </a>
+</p>
+
+---
 
 一个简洁的 iOS 专注计时应用，采用 SwiftUI 原生开发。
 部分代码借助 AI 开发工具辅助构建。
@@ -40,3 +61,11 @@ Chrona/
 ## 设计原则
 
 本项目遵循 [Apple 人机交互指南](https://developer.apple.com/design/human-interface-guidelines/)，优先使用 SwiftUI 原生组件而非自定义实现。
+
+---
+
+<p align="center">
+  <a href="https://github.com">
+    <img src="https://img.shields.io/badge/GitHub-181717?style=flat-square&logo=github" alt="GitHub">
+  </a>
+</p>
