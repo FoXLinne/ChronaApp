@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Chrona/Resources/icons/appicon-iOS-Default-1024x1024@1x.png" width="120" alt="Chrona">
+  <img src="Chrona/Assets.xcassets/aboutAppIconDefault.imageset/appicon-iOS-Default-1024x1024@1x.png" width="120" alt="Chrona">
 </p>
 
 <h1 align="center">Chrona</h1>
