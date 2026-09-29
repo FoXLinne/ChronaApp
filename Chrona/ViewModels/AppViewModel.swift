@@ -24,7 +24,7 @@ final class AppViewModel: ObservableObject {
     let clock = AppClock()
     var now: Date { .now }
     @Published var selectedStatisticsMonth: Date = .now
-    @Published var statisticsTrendScrollDate: Date = .now
+    private(set) var statisticsTrendScrollDate: Date = .now
     @Published var quickLaunchTaskID: UUID?
     @Published var selectedTab: AppTab = .active {
         didSet {
@@ -432,21 +432,16 @@ final class AppViewModel: ObservableObject {
         Statistics.trendVisibleLength()
     }
 
-    func updateStatisticsTrendScrollDate(_ candidate: Date) {
-        statisticsTrendScrollDate = Statistics.clampedTrendStartDate(candidate, month: selectedStatisticsMonth)
-    }
-
     func resetStatisticsTrendToToday() {
-        selectedStatisticsMonth = Statistics.monthStartDate(for: .now)
-        statisticsTrendScrollDate = Statistics.defaultTrendStartDate(for: selectedStatisticsMonth, anchorDate: .now)
+        let month = Statistics.monthStartDate(for: .now)
+        statisticsTrendScrollDate = Statistics.defaultTrendStartDate(for: month, anchorDate: .now)
+        selectedStatisticsMonth = month
     }
 
     func cycleStatisticsMonth(forward: Bool) {
         let result = Statistics.cycleMonth(selectedMonth: selectedStatisticsMonth, forward: forward)
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedStatisticsMonth = result.month
-            statisticsTrendScrollDate = result.scrollDate
-        }
+        statisticsTrendScrollDate = result.scrollDate
+        selectedStatisticsMonth = result.month
     }
 
     // MARK: - 主题

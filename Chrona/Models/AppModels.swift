@@ -517,7 +517,6 @@ struct TaskDistributionEntry: Identifiable {
     var id: String
     var taskTitle: String
     var duration: TimeInterval
-    var colorSeed: String
 }
 
 enum StopConsequence {

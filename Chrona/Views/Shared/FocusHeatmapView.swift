@@ -10,14 +10,34 @@ struct FocusHeatmapView: View {
     let showCheckInMarks: Bool
     let headerTotalDuration: TimeInterval?
     @Environment(\.colorScheme) private var colorScheme
+    @State private var displayedGridHeight: CGFloat?
 
     var body: some View {
         VStack(spacing: 10) {
             monthNavigation
 
-            weekdayHeadersRow
-
             calendarGrid
+                .padding(.top, 6)
+                .fixedSize(horizontal: false, vertical: true)
+                .transaction { $0.animation = nil }
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: HeatmapGridHeightKey.self, value: geometry.size.height)
+                    }
+                }
+                .frame(height: displayedGridHeight, alignment: .top)
+                .clipped()
+                .onPreferenceChange(HeatmapGridHeightKey.self) { height in
+                    guard height > 0, displayedGridHeight != height else { return }
+                    if displayedGridHeight == nil {
+                        displayedGridHeight = height
+                    } else {
+                        // 网格顶部固定，卡片下沿跟随实际行数伸缩。
+                        withAnimation(.easeInOut(duration: 0.24)) {
+                            displayedGridHeight = height
+                        }
+                    }
+                }
 
             heatmapLegend
         }
@@ -48,13 +68,27 @@ struct FocusHeatmapView: View {
             return
         }
         let target = min(candidate, currentMonth)
-        withAnimation(.easeInOut(duration: 0.2)) {
-            month = target
-        }
+        month = target
     }
 
     private func startOfMonth(for date: Date) -> Date {
         Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
+    }
+
+    private func weekRowCount(for date: Date) -> Int {
+        let calendar = Calendar.current
+        let start = startOfMonth(for: date)
+        let days = calendar.range(of: .day, in: .month, for: start)?.count ?? 1
+        let leading = (calendar.component(.weekday, from: start) - calendar.firstWeekday + 7) % 7
+        return (leading + days + 6) / 7
+    }
+}
+
+private struct HeatmapGridHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -73,10 +107,10 @@ private extension FocusHeatmapView {
 
     /// 统计页：左侧大字概要，右侧月份导航
     var statisticsNavigation: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: 4) {
             heatmapSummaryView(duration: headerTotalDuration!)
 
-            Spacer()
+            Spacer(minLength: 4)
 
             Button { moveMonth(by: -1) } label: {
                 Image(systemName: "chevron.left")
@@ -84,8 +118,7 @@ private extension FocusHeatmapView {
             }
             .buttonStyle(.plain)
 
-            Text(month.formatted(.dateTime.year().month(.wide)))
-                .font(.title3.weight(.semibold))
+            monthTitle
 
             Button { moveMonth(by: 1) } label: {
                 Image(systemName: "chevron.right")
@@ -108,8 +141,7 @@ private extension FocusHeatmapView {
 
             Spacer()
 
-            Text(month.formatted(.dateTime.year().month(.wide)))
-                .font(.title3.weight(.semibold))
+            monthTitle
 
             Spacer()
 
@@ -121,6 +153,17 @@ private extension FocusHeatmapView {
             .disabled(isCurrentMonth)
             .opacity(isCurrentMonth ? 0.35 : 1)
         }
+    }
+
+    var monthTitle: some View {
+        Text(month.formatted(.dateTime.year().month(.wide)))
+            .font(.title3.weight(.semibold))
+            .monospacedDigit()
+            .contentTransition(.numericText())
+            .animation(.easeInOut(duration: 0.24), value: month)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(width: 112)
     }
 
     func heatmapSummaryView(duration: TimeInterval) -> some View {
@@ -137,12 +180,16 @@ private extension FocusHeatmapView {
                 Text(verbatim: "\(hours)")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(hours)))
+                    .animation(.easeInOut(duration: 0.24), value: hours)
                 Text(String(localized: "time.hours"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(verbatim: "\(minutes)")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(minutes)))
+                    .animation(.easeInOut(duration: 0.24), value: minutes)
                 Text(String(localized: "time.minutes"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -151,47 +198,42 @@ private extension FocusHeatmapView {
     }
 }
 
-// MARK: - Weekday Headers
+// MARK: - Calendar Grid
 private extension FocusHeatmapView {
-    var weekdayHeadersRow: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
-            ForEach(weekdayHeaders, id: \.self) { header in
-                Text(header)
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .padding(.horizontal, 6)
-    }
-
     var weekdayHeaders: [String] {
         let calendar = Calendar.current
         let symbols = calendar.veryShortWeekdaySymbols
         let first = calendar.firstWeekday - 1
         return Array(symbols[first...] + symbols[..<first])
     }
-}
 
-// MARK: - Calendar Grid
-private extension FocusHeatmapView {
     var calendarGrid: some View {
         let calendar = Calendar.current
         let checkInDays = showCheckInMarks ? Set(checkInDates.map(calendar.startOfDay(for:))) : []
+        let headers = weekdayHeaders
+        let days = calendarDays
         return LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7),
             spacing: 2
         ) {
-            ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, date in
-                if let date = date {
+            // 标题和日期共用七列，数字与星期落在同一列中心。
+            ForEach(headers.indices, id: \.self) { index in
+                Text(headers[index])
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 8)
+            }
+
+            ForEach(days.indices, id: \.self) { index in
+                if let date = days[index] {
                     let duration = durations[date] ?? 0
-                    let isToday = Calendar.current.isDateInToday(date)
+                    let isToday = calendar.isDateInToday(date)
 
                     dayCell(date: date, duration: duration, isToday: isToday, hasCheckIn: checkInDays.contains(date))
                 } else {
                     Color.clear
-                        .aspectRatio(1, contentMode: .fill)
+                        .aspectRatio(1, contentMode: .fit)
                 }
             }
         }
@@ -212,28 +254,28 @@ private extension FocusHeatmapView {
             days.append(calendar.date(byAdding: .day, value: day - 1, to: monthStart))
         }
 
-        while days.count % 7 != 0 {
-            days.append(nil)
-        }
+        // 按月份实际周数补齐末行，网格高度随四、五或六周变化。
+        days += Array(repeating: nil, count: weekRowCount(for: month) * 7 - days.count)
 
         return days
     }
 
     func dayCell(date: Date, duration: TimeInterval, isToday: Bool, hasCheckIn: Bool) -> some View {
-        ZStack(alignment: .bottomTrailing) {
+        let day = Calendar.current.component(.day, from: date)
+        return ZStack(alignment: .bottomTrailing) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(heatmapColor(for: duration))
-                .aspectRatio(1, contentMode: .fill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(isToday ? Color.secondary : Color.clear, lineWidth: 2)
                 )
 
-            Text("\(Calendar.current.component(.day, from: date))")
+            Text("\(day)")
                 .font(.system(size: 12, weight: isToday ? .semibold : .regular))
                 .foregroundStyle(duration > 0 ? .primary : .secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(3)
+                .contentTransition(.numericText(value: Double(day)))
+                .animation(.easeInOut(duration: 0.24), value: day)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if hasCheckIn {
                 Circle()
@@ -247,6 +289,7 @@ private extension FocusHeatmapView {
                     .padding(3)
             }
         }
+        .aspectRatio(1, contentMode: .fit)
     }
 }
 

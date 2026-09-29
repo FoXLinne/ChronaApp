@@ -92,8 +92,7 @@ enum Statistics {
             TaskDistributionEntry(
                 id: key,
                 taskTitle: value.title,
-                duration: value.duration,
-                colorSeed: key
+                duration: value.duration
             )
         }
         .sorted(by: { $0.duration > $1.duration })

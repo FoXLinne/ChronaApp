@@ -62,6 +62,7 @@ struct StatisticsView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .defaultScrollAnchor(.top, for: .sizeChanges)
             .scrollContentBackground(colorScheme == .light ? .hidden : .automatic)
             .chronaSoftScrollEdgeEffect()
             .background {
@@ -254,6 +255,10 @@ private extension StatisticsView {
                         showCheckInMarks: false,
                         headerTotalDuration: durations.values.reduce(0, +)
                     )
+                    .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    .background(cardSurfaceColor, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                 }
             }
         } header: {
@@ -292,6 +297,7 @@ private extension StatisticsView {
         }
         let totalDuration = entries.reduce(0) { $0 + $1.duration }
         let threshold = totalDuration * 0.06
+        let colors = distributionColors(for: entries)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 4) {
                 distributionTotalView(duration: totalDuration)
@@ -342,7 +348,7 @@ private extension StatisticsView {
                         innerRadius: .ratio(0),
                         outerRadius: .inset(selectedDistributionEntryID == entry.id ? 10 : 24)
                     )
-                    .foregroundStyle(pastelColor(for: entry.colorSeed))
+                    .foregroundStyle(colors[entry.id] ?? .blue)
                     .opacity(entryOpacity(entry.id))
                     .annotation(position: .overlay) {
                         if entry.duration >= threshold {
@@ -370,12 +376,11 @@ private extension StatisticsView {
                                 guard sqrt(dx * dx + dy * dy) <= radius else { return }
                                 var angle = atan2(dy, dx) + .pi / 2
                                 if angle < 0 { angle += 2 * .pi }
-                                let total = entries.reduce(0) { $0 + $1.duration }
-                                guard total > 0 else { return }
+                                guard totalDuration > 0 else { return }
                                 var accumulated: Double = 0
                                 for entry in entries {
                                     accumulated += entry.duration
-                                    if accumulated >= angle / (2 * .pi) * total {
+                                    if accumulated >= angle / (2 * .pi) * totalDuration {
                                         withAnimation(.easeInOut(duration: 0.2)) {
                                             if selectedDistributionEntryID == entry.id {
                                                 selectedDistributionEntryID = nil
@@ -394,7 +399,11 @@ private extension StatisticsView {
             }
 
             ForEach(entries) { entry in
-                distributionLegendRow(for: entry, totalDuration: totalDuration)
+                distributionLegendRow(
+                    for: entry,
+                    totalDuration: totalDuration,
+                    color: colors[entry.id] ?? .blue
+                )
             }
         }
         .listRowBackground(cardSurfaceColor)
@@ -406,6 +415,8 @@ private extension StatisticsView {
         } label: {
             HStack(spacing: 6) {
                 Text((customFilterDate ?? Date()).formatted(.dateTime.year().month().day()))
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.24), value: customFilterDate)
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
 
@@ -434,12 +445,16 @@ private extension StatisticsView {
                 Text(verbatim: "\(hours)")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(hours)))
+                    .animation(.easeInOut(duration: 0.24), value: hours)
                 Text(String(localized: "time.hours"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(verbatim: "\(minutes)")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(minutes)))
+                    .animation(.easeInOut(duration: 0.24), value: minutes)
                 Text(String(localized: "time.minutes"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -447,7 +462,7 @@ private extension StatisticsView {
         }
     }
 
-    func distributionLegendRow(for entry: TaskDistributionEntry, totalDuration: TimeInterval) -> some View {
+    func distributionLegendRow(for entry: TaskDistributionEntry, totalDuration: TimeInterval, color: Color) -> some View {
         let percentage = totalDuration > 0 ? Int((entry.duration / totalDuration * 100).rounded()) : 0
         return Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -460,7 +475,7 @@ private extension StatisticsView {
         } label: {
             HStack {
                 Circle()
-                    .fill(pastelColor(for: entry.colorSeed))
+                    .fill(color)
                     .frame(width: 10, height: 10)
                 Text(entry.taskTitle)
                     .font(.subheadline)
@@ -468,6 +483,9 @@ private extension StatisticsView {
                 Text("\(percentage)%  ·  \(appModel.formattedDuration(entry.duration))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.24), value: percentage)
+                    .animation(.easeInOut(duration: 0.24), value: entry.duration)
             }
         }
         .buttonStyle(.plain)
@@ -481,18 +499,14 @@ private extension StatisticsView {
         return 1.0
     }
 
-    func pastelColor(for seed: String) -> Color {
-        let hues: [Double] = [0.92, 0.55, 0.08, 0.38, 0.67, 0.78, 0.2, 0.48]
-        let index = stableColorIndex(for: seed, count: hues.count)
-        return Color(hue: hues[index], saturation: 0.35, brightness: 0.92)
-    }
-
-    func stableColorIndex(for seed: String, count: Int) -> Int {
-        guard count > 0 else { return 0 }
-        let hash = seed.utf8.reduce(UInt64(1_469_598_103_934_665_603)) { partial, byte in
-            (partial ^ UInt64(byte)) &* 1_099_511_628_211
-        }
-        return Int(hash % UInt64(count))
+    /// 按任务标识分配均匀色相，同一张分布图的扇区颜色各不相同。
+    func distributionColors(for entries: [TaskDistributionEntry]) -> [String: Color] {
+        let ids = entries.map(\.id).sorted()
+        guard !ids.isEmpty else { return [:] }
+        return Dictionary(uniqueKeysWithValues: ids.enumerated().map { index, id in
+            let hue = (0.58 + Double(index) / Double(ids.count)).truncatingRemainder(dividingBy: 1)
+            return (id, Color(hue: hue, saturation: 0.52, brightness: 0.90))
+        })
     }
 }
 
@@ -517,6 +531,7 @@ private extension StatisticsView {
         let points = appModel.monthlyTrendPoints()
         let trendDomain = appModel.statisticsTrendDomain()
         let hasTrendData = points.contains { $0.duration > 0 }
+        let maxMinutes = max(1, (points.map(\.duration).max() ?? 0) / 60 * 1.1)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Button(action: { appModel.cycleStatisticsMonth(forward: false) }) {
@@ -529,6 +544,8 @@ private extension StatisticsView {
 
                 Text(appModel.selectedStatisticsMonth.formatted(.dateTime.year().month()))
                     .font(.title3.weight(.semibold))
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.24), value: appModel.selectedStatisticsMonth)
 
                 Spacer()
 
@@ -545,26 +562,25 @@ private extension StatisticsView {
                 let dayLabel = String(localized: "stats.monthlyTrend.day")
                 let durationLabel = String(localized: "stats.monthlyTrend.duration")
                 Chart(points) { point in
-                    LineMark(
-                        x: .value(dayLabel, point.date, unit: .day),
-                        y: .value(durationLabel, point.duration / 60)
-                    )
-                    .interpolationMethod(.catmullRom)
                     AreaMark(
                         x: .value(dayLabel, point.date, unit: .day),
                         y: .value(durationLabel, point.duration / 60)
                     )
-                    .foregroundStyle(.blue.opacity(0.12))
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Color.accentColor.opacity(0.12))
+                    LineMark(
+                        x: .value(dayLabel, point.date, unit: .day),
+                        y: .value(durationLabel, point.duration / 60)
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Color.accentColor)
                 }
                 .chartScrollableAxes(.horizontal)
                 .chartXScale(domain: trendDomain)
+                .chartYScale(domain: 0...maxMinutes)
                 .chartXVisibleDomain(length: appModel.statisticsTrendVisibleLength)
-                .chartScrollPosition(
-                    x: Binding(
-                        get: { appModel.statisticsTrendScrollDate },
-                        set: { appModel.updateStatisticsTrendScrollDate($0) }
-                    )
-                )
+                .chartScrollPosition(initialX: appModel.statisticsTrendScrollDate)
+                .id(appModel.selectedStatisticsMonth)
                 .frame(height: 220)
                 .padding(.vertical, 12)
                 .padding(.horizontal, 4)
@@ -657,6 +673,8 @@ private extension StatisticsView {
             Text(verbatim: "\(value)")
                 .font(.system(size: 24, weight: .bold, design: .rounded))
                 .monospacedDigit()
+                .contentTransition(.numericText(value: Double(value)))
+                .animation(.easeInOut(duration: 0.24), value: value)
             Text(unitText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -680,6 +698,8 @@ private extension StatisticsView {
             Text(verbatim: "\(number)")
                 .font(numberFont)
                 .monospacedDigit()
+                .contentTransition(.numericText(value: Double(number)))
+                .animation(.easeInOut(duration: 0.24), value: number)
             if !parts.suffix.isEmpty {
                 Text(parts.suffix)
                     .font(textFont)
